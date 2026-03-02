@@ -1,35 +1,62 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 
-function App() {
-  const [count, setCount] = useState(0)
+import Login   from "./pages/Login";
+import Signup  from "./pages/Signup";
+import Dashboard from "./pages/Dashboard";
+import PatientForm from "./components/PatientForm";
+import Result  from "./pages/Result";
 
-  return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+// Protected Route — agar login nahi toh /login pe bhejo
+function Protected({ children }) {
+  const user = localStorage.getItem("ms_currentUser");
+  if (!user) return <Navigate to="/login" replace />;
+  return children;
 }
 
-export default App
+// Dashboard wrapper — logout + register pass karo
+function DashboardWrapper() {
+  const navigate = useNavigate();
+  const handleLogout = () => {
+    localStorage.removeItem("ms_currentUser");
+    navigate("/login");
+  };
+  return (
+    <Dashboard
+      onRegister={() => navigate("/register")}
+      onLogout={handleLogout}
+      onViewPatient={(p) => navigate("/result", { state: { patient: p } })}
+    />
+  );
+}
+
+export default function App() {
+  const isLoggedIn = !!localStorage.getItem("ms_currentUser");
+
+  return (
+    <BrowserRouter>
+      <Routes>
+
+        {/* Root redirect */}
+        <Route path="/" element={<Navigate to={isLoggedIn ? "/dashboard" : "/login"} replace />} />
+
+        {/* Auth pages */}
+        <Route path="/login"  element={<Login />} />
+        <Route path="/signup" element={<Signup />} />
+
+        {/* Protected pages */}
+        <Route path="/dashboard" element={<Protected><DashboardWrapper /></Protected>} />
+        <Route path="/register"  element={<Protected><PatientForm /></Protected>} />
+        <Route path="/result"    element={<Protected><Result /></Protected>} />
+
+        {/* 404 */}
+        <Route path="*" element={
+          <div style={{ textAlign: "center", marginTop: 100, fontFamily: "sans-serif" }}>
+            <h2>404 — Page Not Found</h2>
+            <a href="/dashboard" style={{ color: "#E8621A" }}>← Go to Dashboard</a>
+          </div>
+        } />
+
+      </Routes>
+    </BrowserRouter>
+  );
+}
