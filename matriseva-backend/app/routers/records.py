@@ -1,0 +1,21 @@
+from fastapi import APIRouter, Depends, HTTPException
+from app.services.auth_service import get_current_user
+from app.database import records_collection
+from app.services.record_service import create_record, get_record_by_user
+from datetime import datetime
+
+router = APIRouter()
+
+@router.post("/create")
+async def create_health_record(
+    data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    return await create_record(data, current_user["id"])
+
+@router.get("/me")
+async def get_my_record(current_user: dict = Depends(get_current_user)):
+    record = await get_record_by_user(current_user["id"])
+    if not record:
+        raise HTTPException(status_code=404, detail="No record found")
+    return record

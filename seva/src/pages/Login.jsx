@@ -28,27 +28,53 @@ export default function Login() {
   const [loading, setLoading]   = useState(false);
 
   const handleLogin = async () => {
-    setError("");
-    if (!email.trim() || !password.trim()) {
-      setError("Please enter email and password");
+  setError("");
+  if (!email.trim() || !password.trim()) {
+    setError("Please enter email and password");
+    return;
+  }
+
+  setLoading(true);
+  try {
+    const response = await fetch("http://127.0.0.1:8000/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      setError(data.detail || "Invalid email or password");
       return;
     }
 
-    setLoading(true);
-    await new Promise(r => setTimeout(r, 900)); // fake delay
-
-    // Check localStorage for registered users
-    const stored = JSON.parse(localStorage.getItem("ms_users") || "[]");
-    const found  = stored.find(u => u.email === email && u.password === password && u.role === role);
-
-    if (found) {
-      localStorage.setItem("ms_currentUser", JSON.stringify(found));
-      navigate("/dashboard");
-    } else {
-      setError("Invalid email, password, or role. New user? Sign up first.");
+    // Check role matches what user selected on UI
+    if (data.user.role !== role && 
+        !(role === "asha" && data.user.role === "asha_worker")) {
+      setError("Wrong role selected. Please select the correct role.");
+      return;
     }
+
+    // Save token and user to localStorage
+    localStorage.setItem("ms_token", data.access_token);
+    localStorage.setItem("ms_currentUser", JSON.stringify(data.user));
+
+    // Navigate based on role
+    const roleRoutes = {
+      patient:     "/dashboard/patient",
+      doctor:      "/dashboard/doctor",
+      asha_worker: "/dashboard/asha",
+      admin:       "/dashboard/admin",
+    };
+    navigate(roleRoutes[data.user.role] || "/dashboard");
+
+  } catch (err) {
+    setError("Cannot connect to server. Make sure backend is running.");
+  } finally {
     setLoading(false);
-  };
+  }
+};
 
   return (
     <div style={{ minHeight: "100vh", background: C.cream, display: "flex", fontFamily: "'DM Sans','Segoe UI',sans-serif" }}>
