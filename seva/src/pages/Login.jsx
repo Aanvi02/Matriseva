@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 
+const BASE_URL = "http://localhost:8000";
+
 const C = {
   saffron: "#E8621A", saffronPale: "#FDF0E8", saffronDark: "#C04B2D",
   teal: "#0D6E6E", tealPale: "#E8F5F5",
@@ -18,63 +20,73 @@ const ROLES = [
   { id: "patient", label: "Patient",     icon: "🤰",  desc: "View your health records" },
 ];
 
+// Role → backend role mapping
+const ROLE_MAP = {
+  asha:    "asha_worker",
+  doctor:  "doctor",
+  admin:   "admin",
+  patient: "patient",
+};
+
+// Role → dashboard route mapping
+const ROLE_ROUTES = {
+  patient:     "/dashboard/patient",
+  doctor:      "/dashboard/doctor",
+  asha_worker: "/dashboard/asha",
+  admin:       "/dashboard/admin",
+};
+
 export default function Login() {
   const navigate = useNavigate();
-  const [role, setRole]         = useState("asha");
-  const [email, setEmail]       = useState("");
+  const [role, setRole]     = useState("asha");
+  const [email, setEmail]   = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
-  const [error, setError]       = useState("");
-  const [loading, setLoading]   = useState(false);
+  const [error, setError]   = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
-  setError("");
-  if (!email.trim() || !password.trim()) {
-    setError("Please enter email and password");
-    return;
-  }
-
-  setLoading(true);
-  try {
-    const response = await fetch("http://127.0.0.1:8000/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      setError(data.detail || "Invalid email or password");
+    setError("");
+    if (!email.trim() || !password.trim()) {
+      setError("Please enter email and password");
       return;
     }
 
-    // Check role matches what user selected on UI
-    if (data.user.role !== role && 
-        !(role === "asha" && data.user.role === "asha_worker")) {
-      setError("Wrong role selected. Please select the correct role.");
-      return;
+    setLoading(true);
+    try {
+      const response = await fetch(`${BASE_URL}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.detail || "Invalid email or password");
+        return;
+      }
+
+      // Check if selected role matches actual role
+      const expectedBackendRole = ROLE_MAP[role];
+      if (data.user.role !== expectedBackendRole) {
+        setError(`This account is registered as a ${data.user.role.replace("_", " ")}. Please select the correct role.`);
+        return;
+      }
+
+      // Save to localStorage
+      localStorage.setItem("ms_token", data.access_token);
+      localStorage.setItem("ms_currentUser", JSON.stringify(data.user));
+
+      // Navigate to correct dashboard
+      navigate(ROLE_ROUTES[data.user.role] || "/dashboard");
+
+    } catch (err) {
+      setError("Cannot connect to server. Make sure backend is running on port 8000.");
+    } finally {
+      setLoading(false);
     }
-
-    // Save token and user to localStorage
-    localStorage.setItem("ms_token", data.access_token);
-    localStorage.setItem("ms_currentUser", JSON.stringify(data.user));
-
-    // Navigate based on role
-    const roleRoutes = {
-      patient:     "/dashboard/patient",
-      doctor:      "/dashboard/doctor",
-      asha_worker: "/dashboard/asha",
-      admin:       "/dashboard/admin",
-    };
-    navigate(roleRoutes[data.user.role] || "/dashboard");
-
-  } catch (err) {
-    setError("Cannot connect to server. Make sure backend is running.");
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   return (
     <div style={{ minHeight: "100vh", background: C.cream, display: "flex", fontFamily: "'DM Sans','Segoe UI',sans-serif" }}>
@@ -127,13 +139,17 @@ export default function Login() {
           </div>
 
           {/* Email */}
-          <Field label="Email" type="email" value={email} onChange={e => { setEmail(e.target.value); setError(""); }} placeholder="your@email.com" onEnter={handleLogin} />
+          <Field label="Email" type="email" value={email}
+            onChange={e => { setEmail(e.target.value); setError(""); }}
+            placeholder="your@email.com" onEnter={handleLogin} />
 
           {/* Password */}
           <div style={{ marginBottom: 20 }}>
             <label style={{ fontSize: 13, fontWeight: 600, color: C.charcoal, display: "block", marginBottom: 6 }}>Password</label>
             <div style={{ position: "relative" }}>
-              <input type={showPass ? "text" : "password"} value={password}
+              <input
+                type={showPass ? "text" : "password"}
+                value={password}
                 onChange={e => { setPassword(e.target.value); setError(""); }}
                 onKeyDown={e => e.key === "Enter" && handleLogin()}
                 placeholder="Enter your password"
@@ -145,7 +161,11 @@ export default function Login() {
             </div>
           </div>
 
-          {error && <div style={{ background: C.redPale, color: C.red, padding: "10px 14px", borderRadius: 8, fontSize: 13, marginBottom: 16, fontWeight: 500 }}>⚠ {error}</div>}
+          {error && (
+            <div style={{ background: C.redPale, color: C.red, padding: "10px 14px", borderRadius: 8, fontSize: 13, marginBottom: 16, fontWeight: 500 }}>
+              ⚠ {error}
+            </div>
+          )}
 
           <button onClick={handleLogin} disabled={loading} style={{
             width: "100%", padding: 13, borderRadius: 10, border: "none",

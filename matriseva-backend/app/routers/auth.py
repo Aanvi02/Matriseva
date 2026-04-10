@@ -1,14 +1,42 @@
-from fastapi import APIRouter
-from app.models.user import UserRegister, UserLogin, Token
-from app.services.auth_service import register_user, login_user
+# app/routers/auth.py
+from fastapi import APIRouter, HTTPException, status, Depends
+from pydantic import BaseModel, EmailStr
+from app.services.auth_service import register_user, login_user, get_current_user
 
 router = APIRouter()
 
-@router.post("/register", response_model=Token)
-async def register(user: UserRegister):
-    result = await register_user(user.model_dump())
-    return result
 
-@router.post("/login", response_model=Token)
-async def login(user: UserLogin):
-    return await login_user(user.email, user.password)
+# Request models
+class RegisterRequest(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+    role: str
+    phone: str | None = None
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+# Routes
+@router.post("/register")
+async def register(req: RegisterRequest):
+    try:
+        return await register_user(req.dict())
+    except HTTPException as e:
+        raise e
+
+
+@router.post("/login")
+async def login(req: LoginRequest):
+    try:
+        return await login_user(req.email, req.password)
+    except HTTPException as e:
+        raise e
+
+
+@router.get("/me")
+async def me(current_user: dict = Depends(get_current_user)):
+    return current_user

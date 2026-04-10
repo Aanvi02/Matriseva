@@ -1,9 +1,9 @@
-from motor.motor_asyncio import AsyncIOMotorClient
+# app/database.py
+from supabase import create_client, Client
 from app.config import settings
 
-client = AsyncIOMotorClient(settings.MONGO_URI)
-db = client["matriseva"]
+# Initialize Supabase client
+supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SECRET_KEY)
 
-users_collection = db["users"]
-records_collection = db["health_records"]
-appointments_collection = db["appointments"]
+# Example: reference table
+USERS_TABLE = "users"
