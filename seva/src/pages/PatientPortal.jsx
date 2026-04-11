@@ -43,6 +43,13 @@ const MOCK_HOSPITALS = [
   { name:"City Women's Hospital",    type:"Private",    distance:"5.3 km", cost:"₹6,000–12,000", rating:4.7, tags:["NICU","Blood Bank","ICU","24/7"],   trustScore:95, beds:80,  phone:"9876500003" },
 ];
 
+const MOCK_BLOOD_BANKS = [
+  { name:"Govt. District Hospital Blood Bank", distance:"1.2 km", phone:"0132-2712345", available:["A+","A-","B+","O+","O-","AB+"], emergency:true,  timing:"24/7" },
+  { name:"Red Cross Blood Centre",             distance:"3.1 km", phone:"9876500010",   available:["A+","B+","B-","O+","AB+","AB-"],emergency:true,  timing:"8am–8pm" },
+  { name:"City Hospital Blood Bank",           distance:"4.5 km", phone:"9876500011",   available:["A+","O+","O-","B+"],            emergency:false, timing:"9am–6pm" },
+  { name:"Shree Blood Bank",                   distance:"5.8 km", phone:"9876500012",   available:["A+","A-","B+","B-","O+","O-","AB+","AB-"], emergency:true, timing:"24/7" },
+];
+
 const BABY_WEEKLY = {
   4:  { fruit:"Poppy Seed",     emoji:"🌱", size:"1 mm",    weight:"<1g",   desc:"Embryo implants. Neural tube forming." },
   6:  { fruit:"Sweet Pea",      emoji:"🫛", size:"6 mm",    weight:"<1g",   desc:"Heart begins to beat! Eyes & ears forming." },
@@ -98,6 +105,7 @@ function OverviewTab({ profile, user }) {
   const [showFamilySync, setShowFamilySync] = useState(false);
   const [familyPhone, setFamilyPhone] = useState(localStorage.getItem("ms_family_phone") || "");
 
+  // Map snake_case backend fields to what the UI expects
   const p = {
     ...profile,
     bpSys:         profile.bp_sys       ?? profile.bpSys,
@@ -400,6 +408,7 @@ function HospitalTab() {
   const [fetched, setFetched]     = useState(false);
   const [sortBy, setSortBy]       = useState("nearest");
   const [filterTag, setFilterTag] = useState("ALL");
+  const [location, setLocation]   = useState(null);
   const [error, setError]         = useState("");
 
   const fetchHospitals = () => {
@@ -408,6 +417,7 @@ function HospitalTab() {
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         const { latitude, longitude } = pos.coords;
+        setLocation({ latitude, longitude });
         try {
           const query = `[out:json][timeout:25];(node["amenity"="hospital"](around:10000,${latitude},${longitude});way["amenity"="hospital"](around:10000,${latitude},${longitude}););out body center 10;`;
           const res  = await fetch("https://overpass-api.de/api/interpreter", { method:"POST", body:query });
@@ -591,16 +601,13 @@ function LearningTab({ profile }) {
 export default function PatientPortal() {
   const navigate = useNavigate();
   const user     = getCurrentUser();
-  const [profile, setProfile]     = useState(null);
-  const [loading, setLoading]     = useState(true);
-  const [noRecord, setNoRecord]   = useState(false);
+  const [profile, setProfile]   = useState(null);
+  const [loading, setLoading]   = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
 
   useEffect(() => {
-    if (!user || !getToken()) {
-      navigate("/login");
-      return;
-    }
+    if (!user || !getToken()) { navigate("/login"); return; }
+    // ✅ FIX: load profile from backend API, not localStorage
     apiCall("/records/me")
       .then(data => setProfile(data))
       .catch(err => {
@@ -609,8 +616,8 @@ export default function PatientPortal() {
           localStorage.removeItem("ms_currentUser");
           navigate("/login");
         } else if (err.status === 404) {
-          // No record yet — show empty state instead of redirecting
-          setNoRecord(true);
+          // No profile → go back to dashboard to fill form
+          navigate("/dashboard", { replace: true });
         }
       })
       .finally(() => setLoading(false));
@@ -626,25 +633,6 @@ export default function PatientPortal() {
     <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", background:C.cream, flexDirection:"column", gap:12, fontFamily:"'DM Sans',sans-serif" }}>
       <div style={{ fontSize:32 }}>🌸</div>
       <div style={{ fontSize:14, color:C.muted }}>Loading your health profile...</div>
-    </div>
-  );
-
-  // ✅ No record found — show helpful message, do NOT redirect
-  if (noRecord) return (
-    <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", background:C.cream, flexDirection:"column", gap:16, fontFamily:"'DM Sans',sans-serif" }}>
-      <div style={{ fontSize:52 }}>🌸</div>
-      <div style={{ fontSize:22, fontWeight:700, color:C.charcoal }}>No Health Record Found</div>
-      <div style={{ fontSize:14, color:C.muted, textAlign:"center", maxWidth:320 }}>
-        Your health profile hasn't been created yet. Please go to the dashboard and fill in your details.
-      </div>
-      <button
-        onClick={() => navigate("/dashboard")}
-        style={{ marginTop:8, background:C.saffron, color:"white", border:"none", borderRadius:12, padding:"13px 32px", fontSize:15, fontWeight:700, cursor:"pointer" }}>
-        Go to Dashboard →
-      </button>
-      <button onClick={handleLogout} style={{ fontSize:13, color:C.muted, background:"none", border:"none", cursor:"pointer", textDecoration:"underline" }}>
-        Logout
-      </button>
     </div>
   );
 

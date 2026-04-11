@@ -26,11 +26,13 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(plain: str, hashed: str) -> bool:
+    # Try new method (SHA256 + bcrypt) first
     try:
         if pwd_context.verify(_prepare_password(plain), hashed):
             return True
     except Exception:
         pass
+    # Fallback for users registered without SHA256 wrapper
     try:
         return pwd_context.verify(plain, hashed)
     except Exception:
@@ -46,6 +48,7 @@ def create_access_token(data: dict) -> str:
 
 # 🔐 REGISTER USER
 async def register_user(user_data: dict) -> dict:
+    # Normalize email
     user_data["email"] = user_data["email"].lower().strip()
 
     res = supabase.table(USERS_TABLE) \
@@ -86,6 +89,7 @@ async def register_user(user_data: dict) -> dict:
 
 # 🔑 LOGIN USER
 async def login_user(email: str, password: str) -> dict:
+    # Normalize email
     email = email.lower().strip()
 
     res = supabase.table(USERS_TABLE) \
