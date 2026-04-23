@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
+const BASE_URL = "http://127.0.0.1:8000";
 const C = {
   saffron:"#E8621A", saffronPale:"#FDF0E8", saffronDark:"#C04B2D",
   teal:"#0D6E6E", tealPale:"#E8F5F5", tealDark:"#094f4f",
@@ -10,9 +11,24 @@ const C = {
   blue:"#2563EB", bluePale:"#EFF6FF", purple:"#7C3AED", purplePale:"#F5F3FF",
 };
 
-const getCurrentUser    = () => JSON.parse(localStorage.getItem("ms_currentUser") || "null");
-const getPatients       = () => JSON.parse(localStorage.getItem("ms_patients") || "[]");
-const getPatientByEmail = (e) => getPatients().find(p => p.patientEmail === e) || null;
+const getToken       = () => localStorage.getItem("ms_token");
+const getCurrentUser = () => JSON.parse(localStorage.getItem("ms_currentUser") || "null");
+
+const apiCall = async (endpoint, method = "GET", body = null) => {
+  const headers = { "Content-Type": "application/json" };
+  const token = getToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${BASE_URL}${endpoint}`, {
+    method, headers, ...(body && { body: JSON.stringify(body) }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    const err = new Error(data.detail || "Something went wrong");
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+};
 
 const RISK_META = {
   HIGH:   { color:C.red,    bg:C.redPale,    emoji:"🔴", label:"High Risk",     glow:"rgba(220,38,38,0.2)"  },
@@ -20,7 +36,6 @@ const RISK_META = {
   LOW:    { color:C.green,  bg:C.greenPale,  emoji:"🟢", label:"Low Risk",      glow:"rgba(22,163,74,0.2)"  },
 };
 
-// ── Mock data ────────────────────────────────────────────────
 const MOCK_HOSPITALS = [
   { name:"Govt. District Hospital",  type:"Government", distance:"1.2 km", cost:"Free",          rating:4.2, tags:["NICU","Blood Bank","24/7","ICU"], trustScore:87, beds:200, phone:"0132-2712345" },
   { name:"Shree Maternity Centre",   type:"Private",    distance:"2.8 km", cost:"₹4,500–8,000",  rating:4.5, tags:["24/7","Gynecologist","NICU"],      trustScore:92, beds:40,  phone:"9876500001" },
@@ -35,7 +50,6 @@ const MOCK_BLOOD_BANKS = [
   { name:"Shree Blood Bank",                   distance:"5.8 km", phone:"9876500012",   available:["A+","A-","B+","B-","O+","O-","AB+","AB-"], emergency:true, timing:"24/7" },
 ];
 
-// ── Baby size data ───────────────────────────────────────────
 const BABY_WEEKLY = {
   4:  { fruit:"Poppy Seed",     emoji:"🌱", size:"1 mm",    weight:"<1g",   desc:"Embryo implants. Neural tube forming." },
   6:  { fruit:"Sweet Pea",      emoji:"🫛", size:"6 mm",    weight:"<1g",   desc:"Heart begins to beat! Eyes & ears forming." },
@@ -70,6 +84,7 @@ const WEEKLY_TIPS = {
   29: { title:"Week 29–36 — Nearly Ready!", tip:"Pack hospital bag. Know your nearest hospital route.", warning:"Contractions or water breaking — go to hospital NOW." },
   37: { title:"Week 37+ — Due Any Day!", tip:"Stay calm. Baby is fully ready. Stay near hospital.", warning:"Any sign of labor — go to hospital immediately." },
 };
+
 function getWeeklyTip(weeks) {
   const w = Number(weeks);
   if (w <= 4)  return WEEKLY_TIPS[1];
@@ -81,33 +96,39 @@ function getWeeklyTip(weeks) {
   return WEEKLY_TIPS[37];
 }
 
-// ════════════════════════════════════════════════════════════
-// TAB 1 — OVERVIEW
-// ════════════════════════════════════════════════════════════
+// ── Tab components ───────────────────────────────────────────
+
 function OverviewTab({ profile, user }) {
   const risk = profile.risk ? RISK_META[profile.risk] : null;
   const tip  = getWeeklyTip(profile.weeks);
-  const [emergency, setEmergency]       = useState(false);
+  const [emergency, setEmergency] = useState(false);
   const [showFamilySync, setShowFamilySync] = useState(false);
-  const [familyPhone, setFamilyPhone]   = useState(localStorage.getItem("ms_family_phone") || "");
+  const [familyPhone, setFamilyPhone] = useState(localStorage.getItem("ms_family_phone") || "");
 
-  const handleEmergency = () => {
-    setEmergency(true);
-    setTimeout(() => setEmergency(false), 4000);
+  // Map snake_case backend fields to what the UI expects
+  const p = {
+    ...profile,
+    bpSys:         profile.bp_sys       ?? profile.bpSys,
+    bpDia:         profile.bp_dia       ?? profile.bpDia,
+    bloodGroup:    profile.blood_group  ?? profile.bloodGroup,
+    pregnancyType: profile.pregnancy_type ?? profile.pregnancyType,
+    ancDone:       profile.anc_done     ?? profile.ancDone,
+    ashaName:      profile.asha_name    ?? profile.ashaName,
+    riskScore:     profile.risk_score   ?? profile.riskScore,
+    riskFlags:     profile.risk_flags   ?? profile.riskFlags ?? [],
   };
 
   return (
     <div>
-      {/* Risk hero */}
       <div style={{ background:risk?`linear-gradient(135deg,${risk.bg},${C.white})`:`linear-gradient(135deg,${C.tealPale},${C.white})`, border:`2px solid ${risk?.color||C.teal}`, borderRadius:18, padding:"24px 28px", marginBottom:18, boxShadow:`0 8px 32px ${risk?.glow||"rgba(13,110,110,0.12)"}`, display:"flex", alignItems:"center", gap:24 }}>
-        {profile.riskScore > 0 && (
+        {p.riskScore > 0 && (
           <div style={{ position:"relative", width:96, height:96, flexShrink:0 }}>
             <svg width="96" height="96" style={{ transform:"rotate(-90deg)" }}>
               <circle cx="48" cy="48" r="40" fill="none" stroke="#E5E7EB" strokeWidth="8"/>
-              <circle cx="48" cy="48" r="40" fill="none" stroke={risk?.color||C.teal} strokeWidth="8" strokeDasharray={`${(profile.riskScore/100)*251} 251`} strokeLinecap="round" style={{ transition:"stroke-dasharray 1.2s ease" }}/>
+              <circle cx="48" cy="48" r="40" fill="none" stroke={risk?.color||C.teal} strokeWidth="8" strokeDasharray={`${(p.riskScore/100)*251} 251`} strokeLinecap="round"/>
             </svg>
             <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
-              <span style={{ fontSize:20, fontWeight:800, color:risk?.color||C.teal, lineHeight:1 }}>{profile.riskScore}</span>
+              <span style={{ fontSize:20, fontWeight:800, color:risk?.color||C.teal, lineHeight:1 }}>{p.riskScore}</span>
               <span style={{ fontSize:9, color:C.muted, fontWeight:600 }}>SCORE</span>
             </div>
           </div>
@@ -122,16 +143,17 @@ function OverviewTab({ profile, user }) {
                 {profile.risk==="MEDIUM" && "Consult doctor within 48 hours. Monitor symptoms."}
                 {profile.risk==="LOW"    && "✓ Vitals normal. Continue routine ANC visits."}
               </div>
-              {profile.riskFlags?.length > 0 && (
+              {p.riskFlags?.length > 0 && (
                 <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginTop:10 }}>
-                  {profile.riskFlags.map(f=><span key={f} style={{ fontSize:10, padding:"2px 9px", borderRadius:20, background:C.redPale, color:C.red, fontWeight:600 }}>⚠ {f}</span>)}
+                  {p.riskFlags.map(f=><span key={f} style={{ fontSize:10, padding:"2px 9px", borderRadius:20, background:C.redPale, color:C.red, fontWeight:600 }}>⚠ {f}</span>)}
                 </div>
               )}
             </>
           ) : <div style={{ fontSize:16, color:C.muted }}>⏳ Complete health profile for AI assessment</div>}
         </div>
         <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-          <button onClick={handleEmergency} style={{ background:emergency?C.muted:C.red, color:"white", border:"none", borderRadius:12, padding:"14px 18px", fontSize:12, fontWeight:800, cursor:"pointer", minWidth:100, lineHeight:1.5, boxShadow:emergency?"none":"0 0 0 4px rgba(220,38,38,0.2)" }}>
+          <button onClick={()=>{setEmergency(true);setTimeout(()=>setEmergency(false),4000);}}
+            style={{ background:emergency?C.muted:C.red, color:"white", border:"none", borderRadius:12, padding:"14px 18px", fontSize:12, fontWeight:800, cursor:"pointer", minWidth:100 }}>
             {emergency?"🚨 Alerting...":"🆘 Emergency\nHelp"}
           </button>
           <button onClick={()=>setShowFamilySync(true)} style={{ fontSize:11, color:C.teal, background:"none", border:`1px solid ${C.teal}`, borderRadius:8, padding:"5px 10px", cursor:"pointer", fontWeight:600 }}>
@@ -149,20 +171,20 @@ function OverviewTab({ profile, user }) {
               style={{ width:"100%", padding:"10px 13px", borderRadius:9, border:`1.5px solid ${C.border}`, fontSize:14, fontFamily:"inherit", outline:"none", boxSizing:"border-box", marginBottom:16 }}/>
             <div style={{ display:"flex", gap:10 }}>
               <button onClick={()=>setShowFamilySync(false)} style={{ flex:1, padding:10, borderRadius:9, border:`1.5px solid ${C.border}`, background:C.white, cursor:"pointer" }}>Cancel</button>
-              <button onClick={()=>{ localStorage.setItem("ms_family_phone",familyPhone); setShowFamilySync(false); alert("Family member linked!"); }} style={{ flex:1, padding:10, borderRadius:9, border:"none", background:C.teal, color:"white", cursor:"pointer", fontWeight:700 }}>Save</button>
+              <button onClick={()=>{ localStorage.setItem("ms_family_phone",familyPhone); setShowFamilySync(false); alert("Family member linked!"); }}
+                style={{ flex:1, padding:10, borderRadius:9, border:"none", background:C.teal, color:"white", cursor:"pointer", fontWeight:700 }}>Save</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Vitals */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:10, marginBottom:18 }}>
         {[
-          { label:"Blood Pressure", value:`${profile.bpSys||"—"}/${profile.bpDia||"—"}`, unit:"mmHg", warn:Number(profile.bpSys)>=140, icon:"💓" },
-          { label:"Hemoglobin",     value:profile.hb||"—",     unit:"g/dL",  warn:Number(profile.hb)<9&&!!profile.hb,   icon:"🩸" },
-          { label:"Weight",         value:profile.weight||"—", unit:"kg",    warn:false,                                 icon:"⚖️" },
-          { label:"Blood Sugar",    value:profile.sugar||"—",  unit:"mg/dL", warn:Number(profile.sugar)>140&&!!profile.sugar, icon:"🧪" },
-          { label:"Pregnancy Week", value:profile.weeks||"—",  unit:"wks",   warn:false,                                 icon:"🤰" },
+          { label:"Blood Pressure", value:`${p.bpSys||"—"}/${p.bpDia||"—"}`, unit:"mmHg", warn:Number(p.bpSys)>=140, icon:"💓" },
+          { label:"Hemoglobin",     value:p.hb||"—",     unit:"g/dL",  warn:Number(p.hb)<9&&!!p.hb,   icon:"🩸" },
+          { label:"Weight",         value:p.weight||"—", unit:"kg",    warn:false,                     icon:"⚖️" },
+          { label:"Blood Sugar",    value:p.sugar||"—",  unit:"mg/dL", warn:Number(p.sugar)>140&&!!p.sugar, icon:"🧪" },
+          { label:"Pregnancy Week", value:p.weeks||"—",  unit:"wks",   warn:false,                     icon:"🤰" },
         ].map(v=>(
           <div key={v.label} style={{ background:C.white, borderRadius:12, padding:"14px 12px", border:`1px solid ${v.warn?C.red+"60":C.border}`, textAlign:"center" }}>
             <div style={{ fontSize:18, marginBottom:4 }}>{v.icon}</div>
@@ -173,7 +195,6 @@ function OverviewTab({ profile, user }) {
         ))}
       </div>
 
-      {/* Weekly tip */}
       {tip && (
         <div style={{ background:`linear-gradient(135deg,${C.teal},${C.tealDark})`, borderRadius:14, padding:"18px 22px", marginBottom:18, color:"white" }}>
           <div style={{ fontSize:12, fontWeight:700, textTransform:"uppercase", letterSpacing:1, color:"rgba(255,255,255,0.6)", marginBottom:6 }}>This Week's Tip</div>
@@ -183,11 +204,10 @@ function OverviewTab({ profile, user }) {
         </div>
       )}
 
-      {/* Pregnancy details */}
       <div style={{ background:C.white, borderRadius:14, padding:20, border:`1px solid ${C.border}` }}>
         <div style={{ fontSize:12, fontWeight:700, textTransform:"uppercase", letterSpacing:0.8, color:C.muted, marginBottom:14 }}>Pregnancy Details</div>
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"6px 20px" }}>
-          {[["Gestational Age",profile.weeks+" weeks"],["Type",profile.pregnancyType],["ANC Done",profile.ancDone],["Blood Group",profile.bloodGroup],["Anemia",profile.anemia],["HIV",profile.hiv],["LMP",profile.lmp],["ASHA Worker",profile.ashaName||"—"]].map(([k,v])=>v&&(
+          {[["Gestational Age",p.weeks+" weeks"],["Type",p.pregnancyType],["ANC Done",p.ancDone],["Blood Group",p.bloodGroup],["Anemia",p.anemia],["HIV",p.hiv],["LMP",p.lmp],["ASHA Worker",p.ashaName||"—"]].map(([k,v])=>v&&(
             <div key={k} style={{ display:"flex", justifyContent:"space-between", fontSize:13, padding:"8px 0", borderBottom:`1px solid ${C.border}` }}>
               <span style={{ color:C.muted }}>{k}</span>
               <span style={{ fontWeight:600 }}>{v}</span>
@@ -199,19 +219,16 @@ function OverviewTab({ profile, user }) {
   );
 }
 
-// ════════════════════════════════════════════════════════════
-// TAB 2 — HEALTH WALLET
-// ════════════════════════════════════════════════════════════
-function HealthWalletTab({ profile }) {
+function HealthWalletTab() {
   const docs = [
-    { name:"ANC Card",           type:"Card",       date:"2025-02-01", status:"verified" },
-    { name:"Blood Test Report",  type:"Lab Report", date:"2025-02-14", status:"verified" },
-    { name:"Ultrasound Report",  type:"Scan",       date:"2025-01-20", status:"verified" },
+    { name:"ANC Card",          type:"Card",       date:"2025-02-01" },
+    { name:"Blood Test Report", type:"Lab Report", date:"2025-02-14" },
+    { name:"Ultrasound Report", type:"Scan",       date:"2025-01-20" },
   ];
   const vaccines = [
-    { name:"TT1",         done:true,  date:"2024-12-10", due:"—"        },
-    { name:"TT2",         done:true,  date:"2025-01-10", due:"—"        },
-    { name:"IFA Tablets", done:true,  date:"2024-12-10", due:"Ongoing"  },
+    { name:"TT1",         done:true,  date:"2024-12-10", due:"—"         },
+    { name:"TT2",         done:true,  date:"2025-01-10", due:"—"         },
+    { name:"IFA Tablets", done:true,  date:"2024-12-10", due:"Ongoing"   },
     { name:"Calcium",     done:false, date:"—",          due:"2025-03-10"},
     { name:"Hepatitis B", done:false, date:"—",          due:"2025-04-01"},
   ];
@@ -253,9 +270,6 @@ function HealthWalletTab({ profile }) {
   );
 }
 
-// ════════════════════════════════════════════════════════════
-// TAB 3 — BABY TRACKER
-// ════════════════════════════════════════════════════════════
 function BabyTrackerTab({ profile }) {
   const weeks    = Number(profile.weeks) || 20;
   const baby     = getBabyData(weeks);
@@ -315,9 +329,7 @@ function BabyTrackerTab({ profile }) {
           <div style={{ position:"absolute", left:10, top:0, bottom:0, width:2, background:C.border }}/>
           {milestones.map((m,i)=>(
             <div key={i} style={{ position:"relative", marginBottom:14, display:"flex", alignItems:"center", gap:12 }}>
-              <div style={{ position:"absolute", left:-22, width:16, height:16, borderRadius:"50%", background:m.done?C.green:C.border, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, color:"white", fontWeight:700 }}>
-                {m.done?"✓":""}
-              </div>
+              <div style={{ position:"absolute", left:-22, width:16, height:16, borderRadius:"50%", background:m.done?C.green:C.border, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, color:"white", fontWeight:700 }}>{m.done?"✓":""}</div>
               <span style={{ fontSize:13, fontWeight:m.done?600:400, color:m.done?C.charcoal:C.muted }}>Week {m.week} — {m.label}</span>
               {weeks===m.week && <span style={{ fontSize:10, background:C.saffron, color:"white", padding:"1px 7px", borderRadius:20, fontWeight:700 }}>NOW</span>}
             </div>
@@ -328,26 +340,22 @@ function BabyTrackerTab({ profile }) {
   );
 }
 
-// ════════════════════════════════════════════════════════════
-// TAB 4 — MEDICINE REMINDER
-// ════════════════════════════════════════════════════════════
 function MedicineTab({ profile }) {
   const MEDICINES = [
-    { id:"ifa",     name:"IFA Tablet",         icon:"💊", color:C.red,    bg:C.redPale,    dose:"1 daily",  time:"After dinner",   why:"Prevents anemia — most important!", critical:true  },
-    { id:"calcium", name:"Calcium Supplement", icon:"🦴", color:C.teal,   bg:C.tealPale,   dose:"1 twice",  time:"Morning & Night",why:"Baby bones & teeth",                critical:false },
-    { id:"folic",   name:"Folic Acid",          icon:"🌿", color:C.green,  bg:C.greenPale,  dose:"1 daily",  time:"Morning",        why:"Prevents brain defects",            critical:Number(profile.weeks)<14 },
-    { id:"vitd",    name:"Vitamin D",           icon:"☀️", color:C.yellow, bg:C.yellowPale, dose:"1 weekly", time:"Sunday morning", why:"Bone strength & immunity",          critical:false },
+    { id:"ifa",     name:"IFA Tablet",         icon:"💊", color:C.red,    bg:C.redPale,    dose:"1 daily",  time:"After dinner",    why:"Prevents anemia — most important!", critical:true  },
+    { id:"calcium", name:"Calcium Supplement", icon:"🦴", color:C.teal,   bg:C.tealPale,   dose:"1 twice",  time:"Morning & Night", why:"Baby bones & teeth",                critical:false },
+    { id:"folic",   name:"Folic Acid",         icon:"🌿", color:C.green,  bg:C.greenPale,  dose:"1 daily",  time:"Morning",         why:"Prevents brain defects",            critical:Number(profile.weeks)<14 },
+    { id:"vitd",    name:"Vitamin D",          icon:"☀️", color:C.yellow, bg:C.yellowPale, dose:"1 weekly", time:"Sunday morning",  why:"Bone strength & immunity",          critical:false },
   ];
-  const KEY   = "ms_med_" + (profile.id||"pat");
+  const KEY   = "ms_med_"+(profile.id||"pat");
   const today = new Date().toISOString().split("T")[0];
   const [taken, setTaken] = useState(()=>{ try { return JSON.parse(localStorage.getItem(KEY)||"{}"); } catch { return {}; } });
   const toggle = (id) => {
     const k = today+"_"+id;
     const u = { ...taken, [k]:!taken[k] };
-    setTaken(u);
-    localStorage.setItem(KEY, JSON.stringify(u));
+    setTaken(u); localStorage.setItem(KEY, JSON.stringify(u));
   };
-  const isTaken  = (id) => !!taken[today+"_"+id];
+  const isTaken   = (id) => !!taken[today+"_"+id];
   const doneCount = MEDICINES.filter(m=>isTaken(m.id)).length;
   return (
     <div>
@@ -361,14 +369,11 @@ function MedicineTab({ profile }) {
           {Math.round((doneCount/MEDICINES.length)*100)}%
         </div>
       </div>
-      <div style={{ height:8, background:C.border, borderRadius:8, overflow:"hidden", marginBottom:18 }}>
-        <div style={{ height:"100%", width:Math.round((doneCount/MEDICINES.length)*100)+"%", background:`linear-gradient(90deg,${C.teal},${C.green})`, borderRadius:8, transition:"width 0.5s" }}/>
-      </div>
       <div style={{ display:"flex", flexDirection:"column", gap:12, marginBottom:18 }}>
-        {MEDICINES.map(m=>{
+        {MEDICINES.map(m => {
           const done = isTaken(m.id);
           return (
-            <div key={m.id} style={{ background:done?m.bg:C.white, borderRadius:14, padding:"16px 20px", border:`1.5px solid ${done?m.color+"60":C.border}`, display:"flex", alignItems:"center", gap:16, transition:"all 0.2s" }}>
+            <div key={m.id} style={{ background:done?m.bg:C.white, borderRadius:14, padding:"16px 20px", border:`1.5px solid ${done?m.color+"60":C.border}`, display:"flex", alignItems:"center", gap:16 }}>
               <div style={{ width:46, height:46, borderRadius:12, background:m.bg, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>{m.icon}</div>
               <div style={{ flex:1 }}>
                 <div style={{ display:"flex", alignItems:"center", gap:8 }}>
@@ -378,7 +383,7 @@ function MedicineTab({ profile }) {
                 <div style={{ fontSize:12, color:C.muted, marginTop:3 }}>💊 {m.dose} · ⏰ {m.time}</div>
                 <div style={{ fontSize:12, color:m.color, marginTop:3 }}>{m.why}</div>
               </div>
-              <button onClick={()=>toggle(m.id)} style={{ width:44, height:44, borderRadius:"50%", border:`2px solid ${done?m.color:C.border}`, background:done?m.color:C.white, color:done?"white":C.muted, fontSize:18, cursor:"pointer", transition:"all 0.2s" }}>
+              <button onClick={()=>toggle(m.id)} style={{ width:44, height:44, borderRadius:"50%", border:`2px solid ${done?m.color:C.border}`, background:done?m.color:C.white, color:done?"white":C.muted, fontSize:18, cursor:"pointer" }}>
                 {done?"✓":"○"}
               </button>
             </div>
@@ -397,10 +402,7 @@ function MedicineTab({ profile }) {
   );
 }
 
-// ════════════════════════════════════════════════════════════
-// TAB 5 — FIND HOSPITALS
-// ════════════════════════════════════════════════════════════
-function HospitalTab({ profile }) {
+function HospitalTab() {
   const [hospitals, setHospitals] = useState([]);
   const [loading, setLoading]     = useState(false);
   const [fetched, setFetched]     = useState(false);
@@ -436,7 +438,7 @@ function HospitalTab({ profile }) {
         } catch { setHospitals(MOCK_HOSPITALS); }
         setFetched(true); setLoading(false);
       },
-      () => { setHospitals(MOCK_HOSPITALS); setFetched(true); setLoading(false); setError("Location denied. Showing demo hospitals."); }
+      ()=>{ setHospitals(MOCK_HOSPITALS); setFetched(true); setLoading(false); setError("Location denied. Showing demo hospitals."); }
     );
   };
 
@@ -447,51 +449,31 @@ function HospitalTab({ profile }) {
     return b.trustScore-a.trustScore;
   });
 
-  const TrustMeter = ({ score }) => (
-    <div style={{ marginTop:8 }}>
-      <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, marginBottom:3 }}>
-        <span style={{ color:C.muted }}>Trust Score</span>
-        <span style={{ fontWeight:700, color:score>=85?C.green:score>=70?C.yellow:C.red }}>{score}/100</span>
-      </div>
-      <div style={{ height:5, background:C.border, borderRadius:5, overflow:"hidden" }}>
-        <div style={{ height:"100%", width:score+"%", background:score>=85?C.green:score>=70?C.yellow:C.red, borderRadius:5 }}/>
-      </div>
-    </div>
-  );
-
   if (!fetched) return (
     <div style={{ background:C.white, borderRadius:16, padding:"48px 32px", textAlign:"center", border:`1px solid ${C.border}` }}>
       <div style={{ fontSize:52, marginBottom:16 }}>🏥</div>
       <div style={{ fontFamily:"Georgia,serif", fontSize:20, fontWeight:700, marginBottom:8 }}>Find Nearby Hospitals</div>
       <div style={{ fontSize:14, color:C.muted, marginBottom:24 }}>Compare by distance, cost, NICU availability & trust score.</div>
       <button onClick={fetchHospitals} style={{ background:C.saffron, color:"white", border:"none", borderRadius:12, padding:"14px 32px", fontSize:15, fontWeight:700, cursor:"pointer" }}>📍 Find Hospitals Near Me</button>
-      <div style={{ marginTop:16, fontSize:12, color:C.muted, background:C.greenPale, borderRadius:8, padding:"8px 14px" }}>✓ Uses OpenStreetMap — Free, no API key needed!</div>
     </div>
   );
 
-  if (loading) return (
-    <div style={{ textAlign:"center", padding:"60px 0" }}>
-      <div style={{ width:48, height:48, borderRadius:"50%", border:`4px solid ${C.border}`, borderTop:`4px solid ${C.saffron}`, animation:"spin 0.8s linear infinite", margin:"0 auto 16px" }}/>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-      <div style={{ fontSize:14, color:C.muted }}>Finding hospitals near you...</div>
-    </div>
-  );
+  if (loading) return <div style={{ textAlign:"center", padding:"60px 0", color:C.muted }}>Finding hospitals...</div>;
 
   return (
     <div>
       {error && <div style={{ background:C.yellowPale, border:`1px solid ${C.yellow}`, borderRadius:9, padding:"9px 14px", fontSize:12, color:C.yellow, marginBottom:14 }}>⚠ {error}</div>}
-      <div style={{ background:C.white, borderRadius:12, padding:"14px 18px", border:`1px solid ${C.border}`, marginBottom:14, display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
-        <span style={{ fontSize:13, fontWeight:600, marginRight:"auto" }}>{sorted.length} hospitals found</span>
-        {["nearest","rating","trust"].map(s=>(
-          <button key={s} onClick={()=>setSortBy(s)} style={{ padding:"5px 12px", borderRadius:7, border:`1.5px solid ${sortBy===s?C.saffron:C.border}`, background:sortBy===s?C.saffronPale:C.white, color:sortBy===s?C.saffron:C.muted, fontSize:12, fontWeight:600, cursor:"pointer" }}>
-            {s==="nearest"?"📍 Nearest":s==="rating"?"⭐ Rating":"🏆 Trust"}
-          </button>
-        ))}
-      </div>
-      <div style={{ display:"flex", gap:6, marginBottom:16, flexWrap:"wrap" }}>
+      <div style={{ display:"flex", gap:6, marginBottom:14, flexWrap:"wrap" }}>
         {ALL_TAGS.map(t=>(
           <button key={t} onClick={()=>setFilterTag(t)} style={{ padding:"5px 12px", borderRadius:20, border:`1.5px solid ${filterTag===t?C.teal:C.border}`, background:filterTag===t?C.tealPale:C.white, color:filterTag===t?C.teal:C.muted, fontSize:11, fontWeight:600, cursor:"pointer" }}>{t}</button>
         ))}
+        <div style={{ marginLeft:"auto", display:"flex", gap:6 }}>
+          {["nearest","rating","trust"].map(s=>(
+            <button key={s} onClick={()=>setSortBy(s)} style={{ padding:"5px 12px", borderRadius:7, border:`1.5px solid ${sortBy===s?C.saffron:C.border}`, background:sortBy===s?C.saffronPale:C.white, color:sortBy===s?C.saffron:C.muted, fontSize:12, fontWeight:600, cursor:"pointer" }}>
+              {s==="nearest"?"📍 Nearest":s==="rating"?"⭐ Rating":"🏆 Trust"}
+            </button>
+          ))}
+        </div>
       </div>
       <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
         {sorted.map((h,i)=>(
@@ -504,15 +486,11 @@ function HospitalTab({ profile }) {
                   {i===0&&<span style={{ fontSize:10, fontWeight:700, background:C.teal, color:"white", padding:"2px 8px", borderRadius:20 }}>NEAREST</span>}
                 </div>
                 <div style={{ fontSize:12, color:C.muted, marginBottom:8 }}>{h.type} · 📍 {h.distance} · 💰 {h.cost}</div>
-                <div style={{ display:"flex", gap:5, flexWrap:"wrap", marginBottom:4 }}>
+                <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
                   {h.tags.map(t=><span key={t} style={{ fontSize:10, padding:"2px 9px", borderRadius:20, background:C.tealPale, color:C.teal, fontWeight:600 }}>{t}</span>)}
                 </div>
-                <TrustMeter score={h.trustScore}/>
               </div>
-              <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-                <a href={"tel:"+h.phone} style={{ padding:"7px 16px", borderRadius:8, background:C.green, color:"white", fontSize:12, fontWeight:700, textDecoration:"none", textAlign:"center" }}>📞 Call</a>
-                {location&&<a href={`https://www.openstreetmap.org/directions?from=${location.latitude},${location.longitude}&to=${h.lat||""},${h.lon||""}`} target="_blank" rel="noreferrer" style={{ padding:"7px 16px", borderRadius:8, background:C.tealPale, color:C.teal, border:`1px solid ${C.teal}`, fontSize:12, fontWeight:700, textDecoration:"none", textAlign:"center" }}>🗺 Map</a>}
-              </div>
+              <a href={"tel:"+h.phone} style={{ padding:"7px 16px", borderRadius:8, background:C.green, color:"white", fontSize:12, fontWeight:700, textDecoration:"none" }}>📞 Call</a>
             </div>
           </div>
         ))}
@@ -521,133 +499,17 @@ function HospitalTab({ profile }) {
   );
 }
 
-// ════════════════════════════════════════════════════════════
-// TAB 6 — BLOOD BANKS
-// ════════════════════════════════════════════════════════════
-function BloodBankTab({ profile }) {
-  const [banks, setBanks]       = useState([]);
-  const [loading, setLoading]   = useState(false);
-  const [fetched, setFetched]   = useState(false);
-  const [needed, setNeeded]     = useState(profile.bloodGroup||"");
-  const [location, setLocation] = useState(null);
-  const [error, setError]       = useState("");
-
-  const fetchBanks = () => {
-    setLoading(true); setError("");
-    if (!navigator.geolocation) { setBanks(MOCK_BLOOD_BANKS); setFetched(true); setLoading(false); return; }
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const { latitude, longitude } = pos.coords;
-        setLocation({ latitude, longitude });
-        try {
-          const query = `[out:json][timeout:25];(node["amenity"="blood_bank"](around:15000,${latitude},${longitude});node["healthcare"="blood_bank"](around:15000,${latitude},${longitude}););out body 8;`;
-          const res  = await fetch("https://overpass-api.de/api/interpreter", { method:"POST", body:query });
-          const data = await res.json();
-          if (data.elements?.length > 0) {
-            const mapped = data.elements.filter(e=>e.tags?.name).slice(0,6).map(e=>{
-              const R=6371, dLat=(e.lat-latitude)*Math.PI/180, dLon=(e.lon-longitude)*Math.PI/180;
-              const a=Math.sin(dLat/2)**2+Math.cos(latitude*Math.PI/180)*Math.cos(e.lat*Math.PI/180)*Math.sin(dLon/2)**2;
-              const dist=(R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a))).toFixed(1);
-              return { name:e.tags.name, distance:dist+" km", phone:e.tags.phone||"—", available:["A+","B+","O+","O-"], emergency:e.tags.emergency==="yes", timing:e.tags.opening_hours||"Contact", lat:e.lat, lon:e.lon };
-            });
-            setBanks(mapped.length>0?mapped:MOCK_BLOOD_BANKS);
-          } else { setBanks(MOCK_BLOOD_BANKS); setError("Live data unavailable. Showing demo data."); }
-        } catch { setBanks(MOCK_BLOOD_BANKS); }
-        setFetched(true); setLoading(false);
-      },
-      ()=>{ setBanks(MOCK_BLOOD_BANKS); setFetched(true); setLoading(false); setError("Location denied."); }
-    );
-  };
-
-  const filtered = needed ? banks.filter(b=>b.available.includes(needed)) : banks;
-
-  return (
-    <div>
-      <div style={{ background:C.redPale, border:`2px solid ${C.red}`, borderRadius:14, padding:"16px 20px", marginBottom:18, display:"flex", alignItems:"center", gap:14 }}>
-        <span style={{ fontSize:28 }}>🆘</span>
-        <div style={{ flex:1 }}>
-          <div style={{ fontSize:14, fontWeight:700, color:C.red }}>Emergency Blood Helpline</div>
-          <div style={{ fontSize:13, color:C.muted, marginTop:2 }}>National Blood Transfusion Council: <b>1910</b> (Toll Free 24/7)</div>
-        </div>
-        <a href="tel:1910" style={{ background:C.red, color:"white", borderRadius:10, padding:"10px 20px", fontSize:14, fontWeight:700, textDecoration:"none" }}>📞 1910</a>
-      </div>
-
-      {fetched && (
-        <div style={{ background:C.white, borderRadius:12, padding:"14px 18px", border:`1px solid ${C.border}`, marginBottom:16 }}>
-          <div style={{ fontSize:13, fontWeight:600, marginBottom:10 }}>Filter by blood group:</div>
-          <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-            <button onClick={()=>setNeeded("")} style={{ padding:"6px 14px", borderRadius:8, border:`1.5px solid ${needed===""?C.saffron:C.border}`, background:needed===""?C.saffronPale:C.white, color:needed===""?C.saffron:C.muted, fontSize:12, fontWeight:600, cursor:"pointer" }}>All</button>
-            {["A+","A-","B+","B-","O+","O-","AB+","AB-"].map(bg=>(
-              <button key={bg} onClick={()=>setNeeded(bg)} style={{ padding:"6px 14px", borderRadius:8, border:`1.5px solid ${needed===bg?C.red:C.border}`, background:needed===bg?C.redPale:bg===profile.bloodGroup?C.yellowPale:C.white, color:needed===bg?C.red:C.muted, fontSize:12, fontWeight:600, cursor:"pointer" }}>
-                {bg}{bg===profile.bloodGroup?" ★":""}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {!fetched ? (
-        <div style={{ background:C.white, borderRadius:16, padding:"48px 32px", textAlign:"center", border:`1px solid ${C.border}` }}>
-          <div style={{ fontSize:52, marginBottom:16 }}>🩸</div>
-          <div style={{ fontFamily:"Georgia,serif", fontSize:20, fontWeight:700, marginBottom:8 }}>Find Nearby Blood Banks</div>
-          <div style={{ fontSize:14, color:C.muted, marginBottom:24 }}>Your blood group: <b style={{ color:C.red }}>{profile.bloodGroup||"—"}</b></div>
-          <button onClick={fetchBanks} style={{ background:C.red, color:"white", border:"none", borderRadius:12, padding:"14px 32px", fontSize:15, fontWeight:700, cursor:"pointer" }}>📍 Find Blood Banks Near Me</button>
-        </div>
-      ) : loading ? (
-        <div style={{ textAlign:"center", padding:"60px 0" }}>
-          <div style={{ width:48, height:48, borderRadius:"50%", border:`4px solid ${C.border}`, borderTop:`4px solid ${C.red}`, animation:"spin 0.8s linear infinite", margin:"0 auto 16px" }}/>
-          <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-        </div>
-      ) : (
-        <>
-          {error && <div style={{ background:C.yellowPale, borderRadius:9, padding:"9px 14px", fontSize:12, color:C.yellow, marginBottom:14 }}>⚠ {error}</div>}
-          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-            {filtered.map((b,i)=>(
-              <div key={i} style={{ background:C.white, borderRadius:14, padding:"18px 22px", border:`1.5px solid ${b.emergency?C.red+"40":C.border}` }}>
-                <div style={{ display:"flex", alignItems:"flex-start", gap:14 }}>
-                  <div style={{ width:44, height:44, borderRadius:12, background:C.redPale, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>🩸</div>
-                  <div style={{ flex:1 }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
-                      <span style={{ fontSize:15, fontWeight:700 }}>{b.name}</span>
-                      {b.emergency&&<span style={{ fontSize:10, fontWeight:700, background:C.redPale, color:C.red, padding:"2px 8px", borderRadius:20 }}>24/7</span>}
-                    </div>
-                    <div style={{ fontSize:12, color:C.muted, marginBottom:8 }}>📍 {b.distance} · ⏰ {b.timing}</div>
-                    <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
-                      {b.available.map(bg=>(
-                        <span key={bg} style={{ fontSize:11, padding:"2px 9px", borderRadius:20, background:bg===needed?C.redPale:C.cream, color:bg===needed?C.red:C.muted, fontWeight:bg===needed?700:400, border:`1px solid ${bg===needed?C.red:C.border}` }}>{bg}</span>
-                      ))}
-                    </div>
-                  </div>
-                  <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-                    <a href={"tel:"+b.phone} style={{ padding:"8px 16px", borderRadius:8, background:C.red, color:"white", fontSize:12, fontWeight:700, textDecoration:"none", textAlign:"center" }}>📞 Call</a>
-                    {location&&<a href={`https://www.openstreetmap.org/directions?from=${location.latitude},${location.longitude}&to=${b.lat||""},${b.lon||""}`} target="_blank" rel="noreferrer" style={{ padding:"8px 16px", borderRadius:8, background:C.redPale, color:C.red, border:`1px solid ${C.red}`, fontSize:12, fontWeight:700, textDecoration:"none", textAlign:"center" }}>🗺 Map</a>}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-// ════════════════════════════════════════════════════════════
-// TAB 7 — APPOINTMENTS
-// ════════════════════════════════════════════════════════════
 function AppointmentsTab({ profile }) {
   const KEY = "ms_appt_"+(profile.id||"pat");
-  const [appts, setAppts]     = useState(()=>{ try { return JSON.parse(localStorage.getItem(KEY)||"[]"); } catch { return []; } });
+  const [appts, setAppts]       = useState(()=>{ try { return JSON.parse(localStorage.getItem(KEY)||"[]"); } catch { return []; } });
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm]       = useState({ hospital:"", doctor:"", date:"", time:"", type:"ANC Visit" });
+  const [form, setForm]         = useState({ hospital:"", doctor:"", date:"", time:"", type:"ANC Visit" });
 
   const save = () => {
     if (!form.hospital||!form.date) return;
-    const updated = [{ ...form, id:Date.now(), bookedAt:new Date().toISOString() }, ...appts];
-    setAppts(updated);
-    localStorage.setItem(KEY, JSON.stringify(updated));
-    setShowForm(false);
-    setForm({ hospital:"", doctor:"", date:"", time:"", type:"ANC Visit" });
+    const updated = [{ ...form, id:Date.now() }, ...appts];
+    setAppts(updated); localStorage.setItem(KEY, JSON.stringify(updated));
+    setShowForm(false); setForm({ hospital:"", doctor:"", date:"", time:"", type:"ANC Visit" });
   };
 
   return (
@@ -660,19 +522,22 @@ function AppointmentsTab({ profile }) {
         <div style={{ background:C.white, borderRadius:14, padding:22, border:`2px solid ${C.saffron}`, marginBottom:18 }}>
           <div style={{ fontSize:15, fontWeight:700, marginBottom:16 }}>📅 New Appointment</div>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0 16px" }}>
-            {[["Hospital","hospital","Hospital name"],["Doctor","doctor","Dr. name"]].map(([l,k,p])=>(
+            {[["Hospital","hospital"],["Doctor","doctor"]].map(([l,k])=>(
               <div key={k} style={{ marginBottom:14 }}>
                 <label style={{ fontSize:13, fontWeight:600, display:"block", marginBottom:5 }}>{l}</label>
-                <input value={form[k]} onChange={e=>setForm(p=>({...p,[k]:e.target.value}))} placeholder={p} style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1.5px solid ${C.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:C.cream, boxSizing:"border-box" }}/>
+                <input value={form[k]} onChange={e=>setForm(p=>({...p,[k]:e.target.value}))}
+                  style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1.5px solid ${C.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:C.cream, boxSizing:"border-box" }}/>
               </div>
             ))}
             <div style={{ marginBottom:14 }}>
               <label style={{ fontSize:13, fontWeight:600, display:"block", marginBottom:5 }}>Date</label>
-              <input type="date" value={form.date} onChange={e=>setForm(p=>({...p,date:e.target.value}))} style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1.5px solid ${C.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:C.cream, boxSizing:"border-box" }}/>
+              <input type="date" value={form.date} onChange={e=>setForm(p=>({...p,date:e.target.value}))}
+                style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1.5px solid ${C.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:C.cream, boxSizing:"border-box" }}/>
             </div>
             <div style={{ marginBottom:14 }}>
               <label style={{ fontSize:13, fontWeight:600, display:"block", marginBottom:5 }}>Time</label>
-              <input type="time" value={form.time} onChange={e=>setForm(p=>({...p,time:e.target.value}))} style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1.5px solid ${C.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:C.cream, boxSizing:"border-box" }}/>
+              <input type="time" value={form.time} onChange={e=>setForm(p=>({...p,time:e.target.value}))}
+                style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1.5px solid ${C.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:C.cream, boxSizing:"border-box" }}/>
             </div>
           </div>
           <div style={{ display:"flex", gap:10 }}>
@@ -687,27 +552,20 @@ function AppointmentsTab({ profile }) {
           <div style={{ fontSize:15, fontWeight:600, marginBottom:6 }}>No appointments yet</div>
           <div style={{ fontSize:13, color:C.muted }}>Book your next ANC visit or specialist consultation</div>
         </div>
-      ) : (
-        <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-          {appts.map(a=>(
-            <div key={a.id} style={{ background:C.white, borderRadius:12, padding:"16px 20px", border:`1px solid ${C.border}`, display:"flex", alignItems:"center", gap:14 }}>
-              <div style={{ width:44, height:44, borderRadius:10, background:C.tealPale, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>📅</div>
-              <div style={{ flex:1 }}>
-                <div style={{ fontSize:14, fontWeight:700 }}>{a.hospital}{a.doctor&&" · Dr. "+a.doctor}</div>
-                <div style={{ fontSize:12, color:C.muted, marginTop:2 }}>{a.date}{a.time&&" at "+a.time} · {a.type}</div>
-              </div>
-              <span style={{ fontSize:11, fontWeight:700, padding:"3px 10px", borderRadius:20, background:C.tealPale, color:C.teal }}>Upcoming</span>
-            </div>
-          ))}
+      ) : appts.map(a=>(
+        <div key={a.id} style={{ background:C.white, borderRadius:12, padding:"16px 20px", border:`1px solid ${C.border}`, display:"flex", alignItems:"center", gap:14, marginBottom:10 }}>
+          <div style={{ width:44, height:44, borderRadius:10, background:C.tealPale, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>📅</div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:14, fontWeight:700 }}>{a.hospital}{a.doctor&&" · Dr. "+a.doctor}</div>
+            <div style={{ fontSize:12, color:C.muted, marginTop:2 }}>{a.date}{a.time&&" at "+a.time} · {a.type}</div>
+          </div>
+          <span style={{ fontSize:11, fontWeight:700, padding:"3px 10px", borderRadius:20, background:C.tealPale, color:C.teal }}>Upcoming</span>
         </div>
-      )}
+      ))}
     </div>
   );
 }
 
-// ════════════════════════════════════════════════════════════
-// TAB 8 — LEARNING CENTER
-// ════════════════════════════════════════════════════════════
 function LearningTab({ profile }) {
   const [open, setOpen] = useState(null);
   const content = [
@@ -739,34 +597,57 @@ function LearningTab({ profile }) {
   );
 }
 
-// ════════════════════════════════════════════════════════════
-// MAIN PATIENT PORTAL
-// ════════════════════════════════════════════════════════════
+// ── Main Patient Portal ──────────────────────────────────────
 export default function PatientPortal() {
-  const navigate    = useNavigate();
-  const user        = getCurrentUser();
-  const [profile, setProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+  const user     = getCurrentUser();
+  const [profile, setProfile]   = useState(null);
+  const [loading, setLoading]   = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
 
-  useEffect(()=>{ setProfile(getPatientByEmail(user?.email)); setLoading(false); }, []);
+  useEffect(() => {
+    if (!user || !getToken()) { navigate("/login"); return; }
+    // ✅ FIX: load profile from backend API, not localStorage
+    apiCall("/records/me")
+      .then(data => setProfile(data))
+      .catch(err => {
+        if (err.status === 401) {
+          localStorage.removeItem("ms_token");
+          localStorage.removeItem("ms_currentUser");
+          navigate("/login");
+        } else if (err.status === 404) {
+          // No profile → go back to dashboard to fill form
+          navigate("/dashboard", { replace: true });
+        }
+      })
+      .finally(() => setLoading(false));
+  }, []);
 
-  const handleLogout = () => { localStorage.removeItem("ms_currentUser"); navigate("/login"); };
+  const handleLogout = () => {
+    localStorage.removeItem("ms_token");
+    localStorage.removeItem("ms_currentUser");
+    navigate("/login");
+  };
 
-  if (loading) return <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", background:C.cream, fontFamily:"'DM Sans',sans-serif" }}>Loading...</div>;
-  if (!profile) { navigate("/dashboard"); return null; }
+  if (loading) return (
+    <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", background:C.cream, flexDirection:"column", gap:12, fontFamily:"'DM Sans',sans-serif" }}>
+      <div style={{ fontSize:32 }}>🌸</div>
+      <div style={{ fontSize:14, color:C.muted }}>Loading your health profile...</div>
+    </div>
+  );
+
+  if (!profile) return null;
 
   const risk = profile.risk ? RISK_META[profile.risk] : null;
 
   const TABS = [
-    { id:"overview",     label:"Overview",     icon:"🏠" },
-    { id:"wallet",       label:"Health Wallet",icon:"💼" },
-    { id:"baby",         label:"Baby Tracker", icon:"🍉" },
-    { id:"medicine",     label:"Medicines",    icon:"💊" },
-    { id:"hospitals",    label:"Hospitals",    icon:"🏥" },
-    { id:"blood",        label:"Blood Banks",  icon:"🩸" },
-    { id:"appointments", label:"Appointments", icon:"📅" },
-    { id:"learn",        label:"Learn",        icon:"📚" },
+    { id:"overview",     label:"Overview",      icon:"🏠" },
+    { id:"wallet",       label:"Health Wallet", icon:"💼" },
+    { id:"baby",         label:"Baby Tracker",  icon:"🍉" },
+    { id:"medicine",     label:"Medicines",     icon:"💊" },
+    { id:"hospitals",    label:"Hospitals",     icon:"🏥" },
+    { id:"appointments", label:"Appointments",  icon:"📅" },
+    { id:"learn",        label:"Learn",         icon:"📚" },
   ];
 
   return (
@@ -779,7 +660,7 @@ export default function PatientPortal() {
           <span style={{ background:"rgba(255,255,255,0.2)", color:"white", fontSize:11, fontWeight:700, padding:"2px 10px", borderRadius:20 }}>MY HEALTH</span>
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-          {risk&&<span style={{ background:risk.bg, color:risk.color, fontSize:12, fontWeight:700, padding:"4px 12px", borderRadius:20 }}>{risk.emoji} {risk.label}</span>}
+          {risk && <span style={{ background:risk.bg, color:risk.color, fontSize:12, fontWeight:700, padding:"4px 12px", borderRadius:20 }}>{risk.emoji} {risk.label}</span>}
           <span style={{ fontSize:13, color:"rgba(255,255,255,0.9)", fontWeight:600 }}>👋 {user?.name}</span>
           <button onClick={handleLogout} style={{ background:"rgba(255,255,255,0.2)", color:"white", border:"none", borderRadius:8, padding:"6px 14px", fontSize:12, fontWeight:600, cursor:"pointer" }}>Logout</button>
         </div>
@@ -788,7 +669,8 @@ export default function PatientPortal() {
       {/* Tab bar */}
       <div style={{ background:C.white, borderBottom:`1px solid ${C.border}`, padding:"0 20px", display:"flex", gap:0, overflowX:"auto" }}>
         {TABS.map(t=>(
-          <button key={t.id} onClick={()=>setActiveTab(t.id)} style={{ padding:"13px 16px", border:"none", borderBottom:`3px solid ${activeTab===t.id?C.saffron:"transparent"}`, background:"transparent", color:activeTab===t.id?C.saffron:C.muted, fontSize:12, fontWeight:activeTab===t.id?700:500, cursor:"pointer", display:"flex", alignItems:"center", gap:5, whiteSpace:"nowrap", fontFamily:"inherit" }}>
+          <button key={t.id} onClick={()=>setActiveTab(t.id)}
+            style={{ padding:"13px 16px", border:"none", borderBottom:`3px solid ${activeTab===t.id?C.saffron:"transparent"}`, background:"transparent", color:activeTab===t.id?C.saffron:C.muted, fontSize:12, fontWeight:activeTab===t.id?700:500, cursor:"pointer", display:"flex", alignItems:"center", gap:5, whiteSpace:"nowrap", fontFamily:"inherit" }}>
             {t.icon} {t.label}
           </button>
         ))}
@@ -799,7 +681,9 @@ export default function PatientPortal() {
         <div style={{ width:38, height:38, borderRadius:"50%", background:`linear-gradient(135deg,${C.saffron},${C.saffronDark})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18 }}>👩</div>
         <div>
           <div style={{ fontSize:14, fontWeight:700 }}>{profile.name}</div>
-          <div style={{ fontSize:12, color:C.muted }}>Age {profile.age} · Week {profile.weeks} · {profile.village}, {profile.district} · ID: {profile.id}</div>
+          <div style={{ fontSize:12, color:C.muted }}>
+            Age {profile.age} · Week {profile.weeks} · {profile.village}, {profile.district}
+          </div>
         </div>
       </div>
 
@@ -810,7 +694,6 @@ export default function PatientPortal() {
         {activeTab==="baby"         && <BabyTrackerTab  profile={profile}/>}
         {activeTab==="medicine"     && <MedicineTab     profile={profile}/>}
         {activeTab==="hospitals"    && <HospitalTab     profile={profile}/>}
-        {activeTab==="blood"        && <BloodBankTab    profile={profile}/>}
         {activeTab==="appointments" && <AppointmentsTab profile={profile}/>}
         {activeTab==="learn"        && <LearningTab     profile={profile}/>}
       </div>
