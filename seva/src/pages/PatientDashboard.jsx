@@ -29,23 +29,6 @@ const apiCall = async (endpoint, method = "GET", body = null) => {
   return data;
 };
 
-function computeRisk(d) {
-  let score = 0; const flags = [];
-  const bp = Number(d.bpSys), bpD = Number(d.bpDia), hb = Number(d.hb), age = Number(d.age);
-  if (bp>=160||bpD>=110) { score+=40; flags.push("Severe Hypertension"); }
-  else if (bp>=140||bpD>=90) { score+=25; flags.push("High Blood Pressure"); }
-  if (hb>0&&hb<7)  { score+=35; flags.push("Severe Anemia"); }
-  else if (hb>0&&hb<9) { score+=20; flags.push("Moderate Anemia"); }
-  if (age<18) { score+=20; flags.push("Teenage Pregnancy"); }
-  else if (age>35) { score+=15; flags.push("Advanced Maternal Age"); }
-  if (d.pregnancyType==="Twin"||d.pregnancyType==="Triplet") { score+=20; flags.push("Multiple Pregnancy"); }
-  if (d.hiv==="Positive") { score+=30; flags.push("HIV Positive"); }
-  if (d.anemia==="Severe") score+=20;
-  else if (d.anemia==="Moderate") score+=10;
-  const level = score>=45?"HIGH":score>=20?"MEDIUM":"LOW";
-  return { level, score:Math.min(score,100), flags };
-}
-
 // ── Reusable field components ────────────────────────────────
 
 function F({ label, required, type="text", value, onChange, placeholder, error }) {
@@ -108,17 +91,22 @@ const STEPS = [
 ];
 
 function RegistrationForm({ user }) {
-  const navigate = useNavigate();
-  const [step, setStep]       = useState(1);
-  const [errors, setErrors]   = useState({});
-  const [saving, setSaving]   = useState(false);
+  const navigate    = useNavigate();
+  const [step, setStep]         = useState(1);
+  const [errors, setErrors]     = useState({});
+  const [saving, setSaving]     = useState(false);
   const [apiError, setApiError] = useState("");
 
   const [d, setD] = useState({
+    // Personal
     name:user?.name||"", age:"", phone:user?.phone||"", guardian:"", religion:"", caste:"", education:"",
+    // Pregnancy
     lmp:"", edd:"", weeks:"", gravida:"1", para:"0", abortions:"0", living:"0",
     ancDone:"", pregnancyType:"Singleton", prevComplications:"",
+    // Health — added body_temp and heart_rate for ML model
     bpSys:"", bpDia:"", hb:"", weight:"", sugar:"", bloodGroup:"", anemia:"", hiv:"",
+    body_temp:"", heart_rate:"",
+    // Location
     ashaName:"", ashaMobile:"", district:"", block:"", village:"", pin:"", hospital:"", transport:"",
   });
 
@@ -155,6 +143,8 @@ function RegistrationForm({ user }) {
       if (!d.bloodGroup) e.bloodGroup = "Required";
       if (!d.anemia)     e.anemia     = "Required";
       if (!d.hiv)        e.hiv        = "Required";
+      if (!d.body_temp)  e.body_temp  = "Required";
+      if (!d.heart_rate) e.heart_rate = "Required";
     }
     if (step===4) {
       if (!d.district)        e.district  = "Required";
@@ -170,17 +160,10 @@ function RegistrationForm({ user }) {
     if (!validate()) return;
     if (step < 4) { setStep(s => s+1); window.scrollTo({ top:0 }); return; }
 
-    // ── Step 4 submit → POST to backend ──
+    // Step 4 submit → ML risk computed on backend
     setSaving(true); setApiError("");
     try {
-      const risk = computeRisk(d);
-      // record_service.map_fields reads: level→risk, score→risk_score, flags→risk_flags
-      await apiCall("/records/create", "POST", {
-        ...d,
-        level: risk.level,
-        score: risk.score,
-        flags: risk.flags,
-      });
+      await apiCall("/records/create", "POST", { ...d });
       navigate("/portal", { replace: true });
     } catch (err) {
       setApiError(err.message || "Failed to save. Please try again.");
@@ -275,17 +258,26 @@ function RegistrationForm({ user }) {
               💡 Enter your latest readings from your most recent checkup
             </div>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0 18px" }}>
-              <F label="BP Systolic (mmHg)"  required type="number" placeholder="e.g. 120" value={d.bpSys} onChange={e=>set("bpSys",e.target.value)} error={errors.bpSys}/>
-              <F label="BP Diastolic (mmHg)" required type="number" placeholder="e.g. 80"  value={d.bpDia} onChange={e=>set("bpDia",e.target.value)} error={errors.bpDia}/>
+              <F label="BP Systolic (mmHg)"  required type="number" placeholder="e.g. 120" value={d.bpSys}   onChange={e=>set("bpSys",e.target.value)}   error={errors.bpSys}/>
+              <F label="BP Diastolic (mmHg)" required type="number" placeholder="e.g. 80"  value={d.bpDia}   onChange={e=>set("bpDia",e.target.value)}   error={errors.bpDia}/>
             </div>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0 18px" }}>
               <F label="Hemoglobin (g/dL)" required type="number" placeholder="e.g. 11.5" value={d.hb}     onChange={e=>set("hb",e.target.value)}     error={errors.hb}/>
               <F label="Weight (kg)"        required type="number" placeholder="e.g. 58"   value={d.weight} onChange={e=>set("weight",e.target.value)} error={errors.weight}/>
             </div>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0 18px" }}>
-              <F label="Blood Sugar (mg/dL)" type="number" placeholder="e.g. 95" value={d.sugar} onChange={e=>set("sugar",e.target.value)}/>
+              <F label="Blood Sugar (mg/dL)" type="number" placeholder="e.g. 95" value={d.sugar}      onChange={e=>set("sugar",e.target.value)}/>
               <S label="Blood Group" required value={d.bloodGroup} onChange={e=>set("bloodGroup",e.target.value)} options={["A+","A-","B+","B-","O+","O-","AB+","AB-"]} error={errors.bloodGroup}/>
             </div>
+
+            {/* ── NEW: ML model inputs ── */}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0 18px" }}>
+              <F label="Body Temperature (°F)" required type="number" placeholder="e.g. 98"
+                value={d.body_temp} onChange={e=>set("body_temp",e.target.value)} error={errors.body_temp}/>
+              <F label="Heart Rate (bpm)"      required type="number" placeholder="e.g. 75"
+                value={d.heart_rate} onChange={e=>set("heart_rate",e.target.value)} error={errors.heart_rate}/>
+            </div>
+
             <R label="Anemia Status" required options={["None","Mild","Moderate","Severe"]} value={d.anemia} onChange={v=>set("anemia",v)} error={errors.anemia}/>
             <R label="HIV Status"    required options={["Negative","Positive","Not Tested"]} value={d.hiv}   onChange={v=>set("hiv",v)}   error={errors.hiv}/>
           </>}
@@ -339,10 +331,10 @@ export default function PatientDashboard() {
   useEffect(() => {
     if (!user || !getToken()) { navigate("/login", { replace:true }); return; }
     apiCall("/records/me")
-      .then(() => navigate("/portal", { replace:true }))   // profile exists → go to portal
+      .then(() => navigate("/portal", { replace:true }))
       .catch(err => {
-        if (err.status === 404) setChecking(false);         // no profile → show form
-        else navigate("/login", { replace:true });          // bad token → re-login
+        if (err.status === 404) setChecking(false);
+        else navigate("/login", { replace:true });
       });
   }, []);
 
