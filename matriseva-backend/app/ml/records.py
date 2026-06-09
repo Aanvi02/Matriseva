@@ -11,8 +11,6 @@ async def create_health_record(
     data: dict,
     current_user: dict = Depends(get_current_user)
 ):
-    # ── ML Risk Prediction ──────────────────────────
-    # Replace any frontend-computed risk with ML model prediction
     try:
         risk = predict_risk(data)
         data["level"] = risk["level"]

@@ -10,10 +10,8 @@ from fastapi.security import OAuth2PasswordBearer
 from app.database import supabase, USERS_TABLE
 from app.config import settings
 
-# Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# OAuth2 token scheme
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
@@ -46,7 +44,7 @@ def create_access_token(data: dict) -> str:
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
-# 🔐 REGISTER USER
+
 async def register_user(user_data: dict) -> dict:
     # Normalize email
     user_data["email"] = user_data["email"].lower().strip()
@@ -87,7 +85,7 @@ async def register_user(user_data: dict) -> dict:
     }
 
 
-# 🔑 LOGIN USER
+
 async def login_user(email: str, password: str) -> dict:
     # Normalize email
     email = email.lower().strip()
@@ -122,8 +120,6 @@ async def login_user(email: str, password: str) -> dict:
         }
     }
 
-
-# 👤 GET CURRENT USER
 async def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -152,14 +148,14 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
 
     user = res.data[0]
 
+
     return {
-        "id":   user["id"],
-        "name": user["name"],
-        "role": role
-    }
+    "id":    user["id"],
+    "name":  user["name"],
+    "email": user["email"],  # ← sirf yeh line add karo
+    "role":  role
+}
 
-
-# 🔐 ROLE CHECK
 def require_role(*roles):
     async def role_checker(current_user: dict = Depends(get_current_user)):
         if current_user["role"] not in roles:

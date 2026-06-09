@@ -10,9 +10,10 @@ class Settings(BaseSettings):
     # Supabase
     SUPABASE_URL: str
     SUPABASE_SECRET_KEY: str
-
+    
+    gemini_api_key: str 
     class Config:
-        env_file = ".env"  # make sure .env is in project root
+        env_file = ".env"  
 
 # Create settings instance
 settings = Settings()

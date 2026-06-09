@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
 
 export default function Result() {
-  const navigate = useNavigate(); // ← andar hona chahiye
+  const navigate = useNavigate(); 
 
   return (
     <div style={{ padding: 40, textAlign: "center" }}>
