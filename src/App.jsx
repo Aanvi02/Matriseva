@@ -25,7 +25,7 @@ function DashboardRouter() {
     navigate("/login");
   };
 
-  // ✅ FIX: backend returns "asha_worker" not "asha"
+ 
   switch (user.role) {
     case "asha_worker": return <ASHAPortal />;
     case "doctor":      return <DoctorDashboard onLogout={handleLogout} />;

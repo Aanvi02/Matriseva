@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-
+import AIAssistant from "../components/AIAssistant";
+import NotificationBell from "../components/NotificationBell";
 const BASE_URL = "http://127.0.0.1:8000";
 const C = {
   saffron:"#E8621A", saffronPale:"#FDF0E8", saffronDark:"#C04B2D",
@@ -499,67 +500,143 @@ function HospitalTab() {
   );
 }
 
-function AppointmentsTab({ profile }) {
-  const KEY = "ms_appt_"+(profile.id||"pat");
-  const [appts, setAppts]       = useState(()=>{ try { return JSON.parse(localStorage.getItem(KEY)||"[]"); } catch { return []; } });
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm]         = useState({ hospital:"", doctor:"", date:"", time:"", type:"ANC Visit" });
+// PatientPortal.jsx — AppointmentsTab (localStorage REMOVE, backend se fetch)
 
-  const save = () => {
-    if (!form.hospital||!form.date) return;
-    const updated = [{ ...form, id:Date.now() }, ...appts];
-    setAppts(updated); localStorage.setItem(KEY, JSON.stringify(updated));
-    setShowForm(false); setForm({ hospital:"", doctor:"", date:"", time:"", type:"ANC Visit" });
+function AppointmentsTab({ profile }) {
+  const [appts, setAppts]       = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm]         = useState({ date: "", time: "", type: "ANC Visit", notes: "" });
+  const [saving, setSaving]     = useState(false);
+  const [error, setError]       = useState("");
+
+  // ✅ Fix 1 — backend se fetch, localStorage bilkul nahi
+  useEffect(() => {
+    apiCall(`/appointments/?patient_id=${profile.id}`)
+      .then(data => setAppts(Array.isArray(data) ? data : []))
+      .catch(() => setAppts([]))
+      .finally(() => setLoading(false));
+  }, [profile.id]);
+
+  const save = async () => {
+    if (!form.date) return;
+    setSaving(true);
+    setError("");
+    try {
+      const apt = await apiCall("/appointments/", "POST", {
+        date:         form.date,
+        time:         form.time,
+        type:         form.type,
+        notes:        form.notes,
+        patient_id:   profile.id,
+        patient_name: profile.name,
+        doctor_id:    profile.doctor_id   || null,
+        doctor_name:  profile.doctor_name || null,
+        village:      profile.village     || null,
+        status:       "pending",
+      });
+      setAppts(prev => [apt, ...prev]);
+      setShowForm(false);
+      setForm({ date: "", time: "", type: "ANC Visit", notes: "" });
+    } catch (err) {
+      setError(err.message || "Booking failed. Try again.");
+    } finally {
+      setSaving(false);
+    }
   };
+
+  if (loading) return (
+    <div style={{ textAlign:"center", padding:"48px", color:C.muted, fontSize:14 }}>
+      Loading appointments…
+    </div>
+  );
 
   return (
     <div>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
         <div style={{ fontFamily:"Georgia,serif", fontSize:18, fontWeight:700 }}>My Appointments</div>
-        <button onClick={()=>setShowForm(true)} style={{ background:C.saffron, color:"white", border:"none", borderRadius:9, padding:"9px 20px", fontSize:13, fontWeight:700, cursor:"pointer" }}>+ Book</button>
+        <button onClick={() => setShowForm(true)}
+          style={{ background:C.saffron, color:"white", border:"none", borderRadius:9, padding:"9px 20px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+          + Book
+        </button>
       </div>
+
       {showForm && (
         <div style={{ background:C.white, borderRadius:14, padding:22, border:`2px solid ${C.saffron}`, marginBottom:18 }}>
           <div style={{ fontSize:15, fontWeight:700, marginBottom:16 }}>📅 New Appointment</div>
+
+          {error && (
+            <div style={{ background:C.redPale, border:`1px solid ${C.red}`, borderRadius:8, padding:"9px 13px", marginBottom:14, fontSize:13, color:C.red }}>
+              ⚠ {error}
+            </div>
+          )}
+
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"0 16px" }}>
-            {[["Hospital","hospital"],["Doctor","doctor"]].map(([l,k])=>(
-              <div key={k} style={{ marginBottom:14 }}>
-                <label style={{ fontSize:13, fontWeight:600, display:"block", marginBottom:5 }}>{l}</label>
-                <input value={form[k]} onChange={e=>setForm(p=>({...p,[k]:e.target.value}))}
-                  style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1.5px solid ${C.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:C.cream, boxSizing:"border-box" }}/>
-              </div>
-            ))}
             <div style={{ marginBottom:14 }}>
-              <label style={{ fontSize:13, fontWeight:600, display:"block", marginBottom:5 }}>Date</label>
-              <input type="date" value={form.date} onChange={e=>setForm(p=>({...p,date:e.target.value}))}
+              <label style={{ fontSize:13, fontWeight:600, display:"block", marginBottom:5 }}>Date *</label>
+              <input type="date" value={form.date}
+                onChange={e => setForm(p => ({ ...p, date: e.target.value }))}
                 style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1.5px solid ${C.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:C.cream, boxSizing:"border-box" }}/>
             </div>
             <div style={{ marginBottom:14 }}>
               <label style={{ fontSize:13, fontWeight:600, display:"block", marginBottom:5 }}>Time</label>
-              <input type="time" value={form.time} onChange={e=>setForm(p=>({...p,time:e.target.value}))}
+              <input type="time" value={form.time}
+                onChange={e => setForm(p => ({ ...p, time: e.target.value }))}
+                style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1.5px solid ${C.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:C.cream, boxSizing:"border-box" }}/>
+            </div>
+            <div style={{ marginBottom:14 }}>
+              <label style={{ fontSize:13, fontWeight:600, display:"block", marginBottom:5 }}>Type</label>
+              <select value={form.type} onChange={e => setForm(p => ({ ...p, type: e.target.value }))}
+                style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1.5px solid ${C.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:C.cream, boxSizing:"border-box" }}>
+                {["ANC Visit","Blood Test","Ultrasound","Doctor Consultation","Emergency","Other"].map(o => (
+                  <option key={o}>{o}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ marginBottom:14 }}>
+              <label style={{ fontSize:13, fontWeight:600, display:"block", marginBottom:5 }}>Notes</label>
+              <input value={form.notes} placeholder="Optional..."
+                onChange={e => setForm(p => ({ ...p, notes: e.target.value }))}
                 style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1.5px solid ${C.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:C.cream, boxSizing:"border-box" }}/>
             </div>
           </div>
+
           <div style={{ display:"flex", gap:10 }}>
-            <button onClick={()=>setShowForm(false)} style={{ padding:"9px 20px", borderRadius:9, border:`1.5px solid ${C.border}`, background:C.white, cursor:"pointer", fontSize:13 }}>Cancel</button>
-            <button onClick={save} style={{ padding:"9px 24px", borderRadius:9, border:"none", background:C.saffron, color:"white", fontSize:13, fontWeight:700, cursor:"pointer" }}>Book</button>
+            <button onClick={() => { setShowForm(false); setError(""); }}
+              style={{ padding:"9px 20px", borderRadius:9, border:`1.5px solid ${C.border}`, background:C.white, cursor:"pointer", fontSize:13 }}>
+              Cancel
+            </button>
+            <button onClick={save} disabled={saving || !form.date}
+              style={{ padding:"9px 24px", borderRadius:9, border:"none", background:saving||!form.date?C.muted:C.saffron, color:"white", fontSize:13, fontWeight:700, cursor:saving||!form.date?"not-allowed":"pointer" }}>
+              {saving ? "Booking…" : "Book Appointment"}
+            </button>
           </div>
         </div>
       )}
-      {appts.length===0 ? (
+
+      {appts.length === 0 ? (
         <div style={{ background:C.white, borderRadius:14, padding:"48px 32px", textAlign:"center", border:`1px solid ${C.border}` }}>
           <div style={{ fontSize:40, marginBottom:12 }}>📅</div>
           <div style={{ fontSize:15, fontWeight:600, marginBottom:6 }}>No appointments yet</div>
           <div style={{ fontSize:13, color:C.muted }}>Book your next ANC visit or specialist consultation</div>
         </div>
-      ) : appts.map(a=>(
+      ) : appts.map(a => (
         <div key={a.id} style={{ background:C.white, borderRadius:12, padding:"16px 20px", border:`1px solid ${C.border}`, display:"flex", alignItems:"center", gap:14, marginBottom:10 }}>
           <div style={{ width:44, height:44, borderRadius:10, background:C.tealPale, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>📅</div>
           <div style={{ flex:1 }}>
-            <div style={{ fontSize:14, fontWeight:700 }}>{a.hospital}{a.doctor&&" · Dr. "+a.doctor}</div>
-            <div style={{ fontSize:12, color:C.muted, marginTop:2 }}>{a.date}{a.time&&" at "+a.time} · {a.type}</div>
+            <div style={{ fontSize:14, fontWeight:700 }}>
+              {a.type || "Appointment"}{a.doctor_name && ` · Dr. ${a.doctor_name}`}
+            </div>
+            <div style={{ fontSize:12, color:C.muted, marginTop:2 }}>
+              {a.date}{a.time && ` at ${a.time}`}
+              {a.notes && ` · ${a.notes}`}
+            </div>
           </div>
-          <span style={{ fontSize:11, fontWeight:700, padding:"3px 10px", borderRadius:20, background:C.tealPale, color:C.teal }}>Upcoming</span>
+          <span style={{ fontSize:11, fontWeight:700, padding:"3px 10px", borderRadius:20,
+            background: a.status==="confirmed" ? C.greenPale : a.status==="cancelled" ? C.redPale : C.tealPale,
+            color:       a.status==="confirmed" ? C.green     : a.status==="cancelled" ? C.red     : C.teal }}>
+            {a.status === "confirmed" ? "✅ Confirmed" : a.status === "cancelled" ? "❌ Cancelled" : "⏳ Pending"}
+          </span>
         </div>
       ))}
     </div>
@@ -607,8 +684,7 @@ export default function PatientPortal() {
 
   useEffect(() => {
     if (!user || !getToken()) { navigate("/login"); return; }
-    // ✅ FIX: load profile from backend API, not localStorage
-    apiCall("/records/me")
+    apiCall("/patients/me")
       .then(data => setProfile(data))
       .catch(err => {
         if (err.status === 401) {
@@ -660,6 +736,7 @@ export default function PatientPortal() {
           <span style={{ background:"rgba(255,255,255,0.2)", color:"white", fontSize:11, fontWeight:700, padding:"2px 10px", borderRadius:20 }}>MY HEALTH</span>
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+          {profile && <NotificationBell profile={profile} />} 
           {risk && <span style={{ background:risk.bg, color:risk.color, fontSize:12, fontWeight:700, padding:"4px 12px", borderRadius:20 }}>{risk.emoji} {risk.label}</span>}
           <span style={{ fontSize:13, color:"rgba(255,255,255,0.9)", fontWeight:600 }}>👋 {user?.name}</span>
           <button onClick={handleLogout} style={{ background:"rgba(255,255,255,0.2)", color:"white", border:"none", borderRadius:8, padding:"6px 14px", fontSize:12, fontWeight:600, cursor:"pointer" }}>Logout</button>
@@ -697,6 +774,7 @@ export default function PatientPortal() {
         {activeTab==="appointments" && <AppointmentsTab profile={profile}/>}
         {activeTab==="learn"        && <LearningTab     profile={profile}/>}
       </div>
+       <AIAssistant userRole="patient" />
     </div>
   );
 }
