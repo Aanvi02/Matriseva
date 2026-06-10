@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 
+const BASE_URL = "http://localhost:8000";
+
 const C = {
   saffron:"#E8621A", saffronPale:"#FDF0E8", saffronDark:"#C04B2D",
   teal:"#0D6E6E", tealPale:"#E8F5F5",
@@ -10,19 +12,35 @@ const C = {
 };
 
 const ROLES = [
-  { id:"patient", label:"Patient",     icon:"👩", desc:"Track my pregnancy health" },
+  { id:"patient", label:"Patient",     icon:"👩",  desc:"Track my pregnancy health" },
   { id:"asha",    label:"ASHA Worker", icon:"🏃‍♀️", desc:"Register & monitor patients" },
   { id:"doctor",  label:"Doctor",      icon:"👨‍⚕️", desc:"Review cases & reports" },
   { id:"admin",   label:"Admin",       icon:"🏛️",  desc:"Full system access" },
 ];
 
+// Role → backend role mapping
+const ROLE_MAP = {
+  asha:    "asha_worker",
+  doctor:  "doctor",
+  admin:   "admin",
+  patient: "patient",
+};
+
+// Role → dashboard route
+const ROLE_ROUTES = {
+  patient:     "/dashboard/patient",
+  doctor:      "/dashboard/doctor",
+  asha_worker: "/dashboard/asha",
+  admin:       "/dashboard/admin",
+};
+
 // ── Password strength ──────────────────────────────────────────
 function PasswordStrength({ password }) {
   if (!password) return null;
   const checks = [
-    { label:"6+ chars",   ok: password.length >= 6 },
-    { label:"Uppercase",  ok: /[A-Z]/.test(password) },
-    { label:"Number",     ok: /\d/.test(password) },
+    { label:"6+ chars",  ok: password.length >= 6 },
+    { label:"Uppercase", ok: /[A-Z]/.test(password) },
+    { label:"Number",    ok: /\d/.test(password) },
   ];
   const score = checks.filter(c => c.ok).length;
   const colors = ["","#DC2626","#D97706","#16A34A"];
@@ -39,19 +57,17 @@ function PasswordStrength({ password }) {
 }
 
 // ── Field components ───────────────────────────────────────────
-function Field({ label, required, type="text", value, onChange, placeholder, error, children }) {
+function Field({ label, required, type="text", value, onChange, placeholder, error }) {
   const [focused, setFocused] = useState(false);
   return (
     <div style={{ marginBottom:14 }}>
       <label style={{ fontSize:13, fontWeight:600, color:C.charcoal, display:"block", marginBottom:5 }}>
         {label} {required && <span style={{ color:C.red }}>*</span>}
       </label>
-      {children || (
-        <input type={type} value={value} onChange={onChange} placeholder={placeholder}
-          onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
-          style={{ width:"100%", padding:"10px 13px", borderRadius:9, fontSize:13, border:"1.5px solid "+(error?C.red:focused?C.teal:C.border), outline:"none", fontFamily:"inherit", background: focused?C.white:C.cream, transition:"all 0.2s", boxSizing:"border-box" }}
-        />
-      )}
+      <input type={type} value={value} onChange={onChange} placeholder={placeholder}
+        onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+        style={{ width:"100%", padding:"10px 13px", borderRadius:9, fontSize:13, border:"1.5px solid "+(error?C.red:focused?C.teal:C.border), outline:"none", fontFamily:"inherit", background: focused?C.white:C.cream, transition:"all 0.2s", boxSizing:"border-box" }}
+      />
       {error && <div style={{ fontSize:11, color:C.red, marginTop:3 }}>⚠ {error}</div>}
     </div>
   );
@@ -74,7 +90,7 @@ function SelectField({ label, required, value, onChange, options, error }) {
   );
 }
 
-// ── Role-specific form fields ──────────────────────────────────
+// ── Role-specific fields ───────────────────────────────────────
 function PatientFields({ form, set, errors }) {
   return (
     <>
@@ -153,12 +169,13 @@ function AdminFields({ form, set, errors }) {
 
 // ── Main Signup ────────────────────────────────────────────────
 export default function Signup() {
-  const navigate = useNavigate();
-  const [role, setRole]     = useState("patient");
-  const [showPass, setShowPass] = useState(false);
-  const [loading, setLoading]   = useState(false);
-  const [success, setSuccess]   = useState(false);
-  const [errors, setErrors]     = useState({});
+  const navigate  = useNavigate();
+  const [role, setRole]       = useState("patient");
+  const [showPass, setShowPass]   = useState(false);
+  const [loading, setLoading]     = useState(false);
+  const [success, setSuccess]     = useState(false);
+  const [errors, setErrors]       = useState({});
+  const [globalError, setGlobalError] = useState("");
 
   const [form, setForm] = useState({
     name:"", email:"", phone:"", password:"", confirmPassword:"",
@@ -169,33 +186,34 @@ export default function Signup() {
   const set = (k, v) => {
     setForm(f => ({ ...f, [k]: v }));
     setErrors(e => { const n = { ...e }; delete n[k]; return n; });
+    setGlobalError("");
   };
 
   const validate = () => {
     const e = {};
-    if (!form.name.trim())                                e.name    = "Name is required";
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email   = "Valid email required";
-    if (!/^[6-9]\d{9}$/.test(form.phone))               e.phone   = "Valid 10-digit mobile required";
+    if (!form.name.trim())                                e.name     = "Name is required";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email    = "Valid email required";
+    if (!/^[6-9]\d{9}$/.test(form.phone))               e.phone    = "Valid 10-digit mobile required";
     if (form.password.length < 6)                        e.password = "Min 6 characters";
-    if (!/[A-Z]/.test(form.password))                    e.password = "Include 1 uppercase letter";
-    if (!/\d/.test(form.password))                       e.password = "Include 1 number";
+    else if (!/[A-Z]/.test(form.password))               e.password = "Include 1 uppercase letter";
+    else if (!/\d/.test(form.password))                  e.password = "Include 1 number";
     if (form.password !== form.confirmPassword)          e.confirmPassword = "Passwords don't match";
 
     if (role === "patient") {
-      if (!form.age || form.age < 10 || form.age > 60) e.age     = "Valid age required";
-      if (!form.district)   e.district = "Required";
-      if (!form.village.trim()) e.village = "Required";
+      if (!form.age || form.age < 10 || form.age > 60) e.age      = "Valid age required";
+      if (!form.district)      e.district = "Required";
+      if (!form.village.trim()) e.village  = "Required";
     }
     if (role === "asha") {
-      if (!form.ashaId.trim()) e.ashaId  = "ASHA ID required";
+      if (!form.ashaId.trim()) e.ashaId   = "ASHA ID required";
       if (!form.district)      e.district = "Required";
       if (!form.block)         e.block    = "Required";
     }
     if (role === "doctor") {
-      if (!form.doctorId.trim())      e.doctorId      = "Doctor ID required";
-      if (!form.specialization)       e.specialization = "Required";
-      if (!form.hospital.trim())      e.hospital      = "Required";
-      if (!form.district)             e.district      = "Required";
+      if (!form.doctorId.trim())    e.doctorId       = "Doctor ID required";
+      if (!form.specialization)     e.specialization = "Required";
+      if (!form.hospital.trim())    e.hospital       = "Required";
+      if (!form.district)           e.district       = "Required";
     }
     if (role === "admin") {
       if (form.adminCode !== "MATRISEVA2024") e.adminCode = "Invalid admin code";
@@ -208,32 +226,47 @@ export default function Signup() {
     if (Object.keys(errs).length) { setErrors(errs); return; }
 
     setLoading(true);
-    await new Promise(r => setTimeout(r, 900));
+    setGlobalError("");
 
-    const stored = JSON.parse(localStorage.getItem("ms_users") || "[]");
-    if (stored.find(u => u.email === form.email)) {
-      setErrors({ email: "Email already registered. Please log in." });
+    try {
+      // Build payload for backend
+      const payload = {
+        name:     form.name.trim(),
+        email:    form.email.trim().toLowerCase(),
+        password: form.password,
+        role:     ROLE_MAP[role],
+        phone:    form.phone,
+        // role-specific extra fields stored in phone field metadata
+        ...(role === "patient" && { age: form.age, district: form.district, village: form.village }),
+        ...(role === "asha"    && { ashaId: form.ashaId, district: form.district, block: form.block, phc: form.phc }),
+        ...(role === "doctor"  && { doctorId: form.doctorId, specialization: form.specialization, hospital: form.hospital, district: form.district }),
+      };
+
+      const response = await fetch(`${BASE_URL}/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setGlobalError(data.detail || "Registration failed. Please try again.");
+        return;
+      }
+
+      // Save token and user from registration response
+      localStorage.setItem("ms_token", data.access_token);
+      localStorage.setItem("ms_currentUser", JSON.stringify(data.user));
+
+      setSuccess(true);
+      setTimeout(() => navigate(ROLE_ROUTES[data.user.role] || "/dashboard"), 1600);
+
+    } catch (err) {
+      setGlobalError("Cannot connect to server. Make sure backend is running on port 8000.");
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const newUser = {
-      name: form.name, email: form.email, phone: form.phone,
-      password: form.password, role,
-      // role-specific fields
-      ...(role === "patient" && { age: form.age, district: form.district, village: form.village }),
-      ...(role === "asha"    && { ashaId: form.ashaId, district: form.district, block: form.block, phc: form.phc }),
-      ...(role === "doctor"  && { doctorId: form.doctorId, specialization: form.specialization, hospital: form.hospital, district: form.district }),
-      createdAt: new Date().toISOString(),
-    };
-
-    stored.push(newUser);
-    localStorage.setItem("ms_users", JSON.stringify(stored));
-    localStorage.setItem("ms_currentUser", JSON.stringify(newUser));
-
-    setSuccess(true);
-    setLoading(false);
-    setTimeout(() => navigate("/dashboard"), 1600);
   };
 
   // Success screen
@@ -260,8 +293,6 @@ export default function Signup() {
         <div style={{ fontSize:14, color:"rgba(255,255,255,0.65)", textAlign:"center", lineHeight:1.8, maxWidth:260 }}>
           AI-powered maternal healthcare for rural India
         </div>
-
-        {/* Role preview cards */}
         <div style={{ marginTop:40, display:"flex", flexDirection:"column", gap:10, width:"100%", maxWidth:280 }}>
           {ROLES.map(r => (
             <div key={r.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 14px", borderRadius:10, background: role===r.id ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.07)", border:"1px solid "+(role===r.id?"rgba(255,255,255,0.4)":"transparent"), transition:"all 0.2s" }}>
@@ -288,7 +319,7 @@ export default function Signup() {
           <div style={{ fontSize:12, fontWeight:700, textTransform:"uppercase", letterSpacing:0.8, color:C.muted, marginBottom:10 }}>I am a</div>
           <div style={{ display:"flex", gap:7 }}>
             {ROLES.map(r => (
-              <button key={r.id} onClick={() => { setRole(r.id); setErrors({}); }} style={{
+              <button key={r.id} onClick={() => { setRole(r.id); setErrors({}); setGlobalError(""); }} style={{
                 flex:1, padding:"9px 6px", borderRadius:10, cursor:"pointer",
                 border:"2px solid "+(role===r.id ? C.saffron : C.border),
                 background: role===r.id ? C.saffronPale : C.white,
@@ -313,7 +344,9 @@ export default function Signup() {
             Password <span style={{ color:C.red }}>*</span>
           </label>
           <div style={{ position:"relative" }}>
-            <input type={showPass?"text":"password"} value={form.password} onChange={e=>set("password",e.target.value)} placeholder="Min 6 chars, 1 uppercase, 1 number"
+            <input type={showPass?"text":"password"} value={form.password}
+              onChange={e=>set("password",e.target.value)}
+              placeholder="Min 6 chars, 1 uppercase, 1 number"
               style={{ width:"100%", padding:"10px 40px 10px 13px", borderRadius:9, fontSize:13, border:"1.5px solid "+(errors.password?C.red:C.border), outline:"none", fontFamily:"inherit", background:C.cream, boxSizing:"border-box" }} />
             <button onClick={()=>setShowPass(!showPass)} style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", cursor:"pointer", fontSize:15 }}>
               {showPass?"🙈":"👁️"}
@@ -328,13 +361,21 @@ export default function Signup() {
           <label style={{ fontSize:13, fontWeight:600, color:C.charcoal, display:"block", marginBottom:5 }}>
             Confirm Password <span style={{ color:C.red }}>*</span>
           </label>
-          <input type="password" value={form.confirmPassword} onChange={e=>set("confirmPassword",e.target.value)}
+          <input type="password" value={form.confirmPassword}
+            onChange={e=>set("confirmPassword",e.target.value)}
             onKeyDown={e=>e.key==="Enter"&&handleSignup()}
             placeholder="Re-enter password"
             style={{ width:"100%", padding:"10px 13px", borderRadius:9, fontSize:13, border:"1.5px solid "+(errors.confirmPassword?C.red:form.confirmPassword&&form.confirmPassword===form.password?C.green:C.border), outline:"none", fontFamily:"inherit", background:C.cream, boxSizing:"border-box" }} />
           {errors.confirmPassword && <div style={{ fontSize:11, color:C.red, marginTop:3 }}>⚠ {errors.confirmPassword}</div>}
           {form.confirmPassword && form.confirmPassword===form.password && <div style={{ fontSize:11, color:C.green, marginTop:3 }}>✓ Passwords match</div>}
         </div>
+
+        {/* Global error */}
+        {globalError && (
+          <div style={{ background:C.redPale, color:C.red, padding:"10px 14px", borderRadius:8, fontSize:13, marginBottom:14, fontWeight:500 }}>
+            ⚠ {globalError}
+          </div>
+        )}
 
         <button onClick={handleSignup} disabled={loading} style={{
           width:"100%", padding:13, borderRadius:10, border:"none",
