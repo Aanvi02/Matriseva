@@ -79,7 +79,7 @@ export default function Login() {
       localStorage.setItem("ms_currentUser", JSON.stringify(data.user));
 
       // Navigate to correct dashboard
-      navigate(ROLE_ROUTES[data.user.role] || "/dashboard");
+      navigate("/dashboard");
 
     } catch (err) {
       setError("Cannot connect to server. Make sure backend is running on port 8000.");

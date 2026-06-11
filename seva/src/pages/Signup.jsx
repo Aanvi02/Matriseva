@@ -258,8 +258,7 @@ export default function Signup() {
       localStorage.setItem("ms_token", data.access_token);
       localStorage.setItem("ms_currentUser", JSON.stringify(data.user));
       setSuccess(true);
-      setTimeout(() => navigate(ROLE_ROUTES[data.user.role] || "/dashboard"), 1600);
-
+      setTimeout(() => navigate("/dashboard"), 1600);
     } catch (err) {
       setGlobalError(err.message || "Server se connect nahi ho pa raha. Thodi der baad dobara try karein.");
     } finally {
