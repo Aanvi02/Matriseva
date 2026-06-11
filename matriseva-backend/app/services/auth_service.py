@@ -1,16 +1,14 @@
 from datetime import datetime, timedelta
 import hashlib
 import base64
+import bcrypt
 
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from fastapi import HTTPException, Depends, status
 from fastapi.security import OAuth2PasswordBearer
 
 from app.database import supabase, USERS_TABLE
 from app.config import settings
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
@@ -20,19 +18,14 @@ def _prepare_password(password: str) -> str:
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(_prepare_password(password)[:72])
+    prepared = _prepare_password(password).encode("utf-8")
+    return bcrypt.hashpw(prepared, bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    # Try new method (SHA256 + bcrypt) first
     try:
-        if pwd_context.verify(_prepare_password(plain), hashed):
-            return True
-    except Exception:
-        pass
-    # Fallback for users registered without SHA256 wrapper
-    try:
-        return pwd_context.verify(plain, hashed)
+        prepared = _prepare_password(plain).encode("utf-8")
+        return bcrypt.checkpw(prepared, hashed.encode("utf-8"))
     except Exception:
         return False
 
@@ -44,9 +37,7 @@ def create_access_token(data: dict) -> str:
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
-
 async def register_user(user_data: dict) -> dict:
-    # Normalize email
     user_data["email"] = user_data["email"].lower().strip()
 
     res = supabase.table(USERS_TABLE) \
@@ -66,11 +57,7 @@ async def register_user(user_data: dict) -> dict:
         raise HTTPException(status_code=500, detail="Failed to create user")
 
     user = insert_res.data[0]
-
-    token = create_access_token({
-        "sub": user["id"],
-        "role": user["role"]
-    })
+    token = create_access_token({"sub": user["id"], "role": user["role"]})
 
     return {
         "access_token": token,
@@ -85,9 +72,7 @@ async def register_user(user_data: dict) -> dict:
     }
 
 
-
 async def login_user(email: str, password: str) -> dict:
-    # Normalize email
     email = email.lower().strip()
 
     res = supabase.table(USERS_TABLE) \
@@ -103,10 +88,7 @@ async def login_user(email: str, password: str) -> dict:
     if not verify_password(password, user["password"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    token = create_access_token({
-        "sub": user["id"],
-        "role": user["role"]
-    })
+    token = create_access_token({"sub": user["id"], "role": user["role"]})
 
     return {
         "access_token": token,
@@ -120,6 +102,7 @@ async def login_user(email: str, password: str) -> dict:
         }
     }
 
+
 async def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -131,10 +114,8 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         user_id: str = payload.get("sub")
         role: str = payload.get("role")
-
         if user_id is None:
             raise credentials_exception
-
     except JWTError:
         raise credentials_exception
 
@@ -147,14 +128,13 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
         raise credentials_exception
 
     user = res.data[0]
-
-
     return {
-    "id":    user["id"],
-    "name":  user["name"],
-    "email": user["email"],  # ← sirf yeh line add karo
-    "role":  role
-}
+        "id":    user["id"],
+        "name":  user["name"],
+        "email": user["email"],
+        "role":  role
+    }
+
 
 def require_role(*roles):
     async def role_checker(current_user: dict = Depends(get_current_user)):
