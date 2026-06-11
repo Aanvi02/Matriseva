@@ -18,7 +18,6 @@ const ROLES = [
   { id:"admin",   label:"Admin",       icon:"🏛️",  desc:"Full system access" },
 ];
 
-// Role → backend role mapping
 const ROLE_MAP = {
   asha:    "asha_worker",
   doctor:  "doctor",
@@ -26,7 +25,6 @@ const ROLE_MAP = {
   patient: "patient",
 };
 
-// Role → dashboard route
 const ROLE_ROUTES = {
   patient:     "/dashboard/patient",
   doctor:      "/dashboard/doctor",
@@ -34,7 +32,6 @@ const ROLE_ROUTES = {
   admin:       "/dashboard/admin",
 };
 
-// ── Password strength ──────────────────────────────────────────
 function PasswordStrength({ password }) {
   if (!password) return null;
   const checks = [
@@ -56,7 +53,6 @@ function PasswordStrength({ password }) {
   );
 }
 
-// ── Field components ───────────────────────────────────────────
 function Field({ label, required, type="text", value, onChange, placeholder, error }) {
   const [focused, setFocused] = useState(false);
   return (
@@ -90,7 +86,6 @@ function SelectField({ label, required, value, onChange, options, error }) {
   );
 }
 
-// ── Role-specific fields ───────────────────────────────────────
 function PatientFields({ form, set, errors }) {
   return (
     <>
@@ -167,10 +162,9 @@ function AdminFields({ form, set, errors }) {
   );
 }
 
-// ── Main Signup ────────────────────────────────────────────────
 export default function Signup() {
   const navigate  = useNavigate();
-  const [role, setRole]       = useState("patient");
+  const [role, setRole]           = useState("patient");
   const [showPass, setShowPass]   = useState(false);
   const [loading, setLoading]     = useState(false);
   const [success, setSuccess]     = useState(false);
@@ -201,7 +195,7 @@ export default function Signup() {
 
     if (role === "patient") {
       if (!form.age || form.age < 10 || form.age > 60) e.age      = "Valid age required";
-      if (!form.district)      e.district = "Required";
+      if (!form.district)       e.district = "Required";
       if (!form.village.trim()) e.village  = "Required";
     }
     if (role === "asha") {
@@ -221,6 +215,17 @@ export default function Signup() {
     return e;
   };
 
+  const doRegister = async (payload) => {
+    const response = await fetch(`${BASE_URL}/auth/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || "Registration failed. Please try again.");
+    return data;
+  };
+
   const handleSignup = async () => {
     const errs = validate();
     if (Object.keys(errs).length) { setErrors(errs); return; }
@@ -228,48 +233,40 @@ export default function Signup() {
     setLoading(true);
     setGlobalError("");
 
+    const payload = {
+      name:     form.name.trim(),
+      email:    form.email.trim().toLowerCase(),
+      password: form.password,
+      role:     ROLE_MAP[role],
+      phone:    form.phone,
+      ...(role === "patient" && { age: form.age, district: form.district, village: form.village }),
+      ...(role === "asha"    && { ashaId: form.ashaId, district: form.district, block: form.block, phc: form.phc }),
+      ...(role === "doctor"  && { doctorId: form.doctorId, specialization: form.specialization, hospital: form.hospital, district: form.district }),
+    };
+
     try {
-      // Build payload for backend
-      const payload = {
-        name:     form.name.trim(),
-        email:    form.email.trim().toLowerCase(),
-        password: form.password,
-        role:     ROLE_MAP[role],
-        phone:    form.phone,
-        // role-specific extra fields stored in phone field metadata
-        ...(role === "patient" && { age: form.age, district: form.district, village: form.village }),
-        ...(role === "asha"    && { ashaId: form.ashaId, district: form.district, block: form.block, phc: form.phc }),
-        ...(role === "doctor"  && { doctorId: form.doctorId, specialization: form.specialization, hospital: form.hospital, district: form.district }),
-      };
-
-      const response = await fetch(`${BASE_URL}/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setGlobalError(data.detail || "Registration failed. Please try again.");
-        return;
+      let data;
+      try {
+        data = await doRegister(payload);
+      } catch (firstErr) {
+        // Render free plan cold start — retry after 4 seconds
+        setGlobalError("Server warm ho raha hai, please wait...");
+        await new Promise(r => setTimeout(r, 4000));
+        data = await doRegister(payload);
       }
 
-      // Save token and user from registration response
       localStorage.setItem("ms_token", data.access_token);
       localStorage.setItem("ms_currentUser", JSON.stringify(data.user));
-
       setSuccess(true);
       setTimeout(() => navigate(ROLE_ROUTES[data.user.role] || "/dashboard"), 1600);
 
     } catch (err) {
-      setGlobalError("Cannot connect to server. Make sure backend is running on port 8000.");
+      setGlobalError(err.message || "Server se connect nahi ho pa raha. Thodi der baad dobara try karein.");
     } finally {
       setLoading(false);
     }
   };
 
-  // Success screen
   if (success) return (
     <div style={{ minHeight:"100vh", background:C.cream, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'DM Sans','Segoe UI',sans-serif" }}>
       <div style={{ textAlign:"center" }}>
@@ -332,7 +329,6 @@ export default function Signup() {
           </div>
         </div>
 
-        {/* Role-specific fields */}
         {role === "patient" && <PatientFields form={form} set={set} errors={errors} />}
         {role === "asha"    && <ASHAFields    form={form} set={set} errors={errors} />}
         {role === "doctor"  && <DoctorFields  form={form} set={set} errors={errors} />}
@@ -370,10 +366,9 @@ export default function Signup() {
           {form.confirmPassword && form.confirmPassword===form.password && <div style={{ fontSize:11, color:C.green, marginTop:3 }}>✓ Passwords match</div>}
         </div>
 
-        {/* Global error */}
         {globalError && (
-          <div style={{ background:C.redPale, color:C.red, padding:"10px 14px", borderRadius:8, fontSize:13, marginBottom:14, fontWeight:500 }}>
-            ⚠ {globalError}
+          <div style={{ background: globalError.includes("warm") ? "#FFF7ED" : C.redPale, color: globalError.includes("warm") ? C.saffronDark : C.red, padding:"10px 14px", borderRadius:8, fontSize:13, marginBottom:14, fontWeight:500 }}>
+            {globalError.includes("warm") ? "⏳" : "⚠"} {globalError}
           </div>
         )}
 
