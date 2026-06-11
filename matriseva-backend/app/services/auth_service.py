@@ -20,7 +20,7 @@ def _prepare_password(password: str) -> str:
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(_prepare_password(password))
+    return pwd_context.hash(_prepare_password(password)[:72])
 
 
 def verify_password(plain: str, hashed: str) -> bool:
