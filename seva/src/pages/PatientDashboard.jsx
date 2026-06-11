@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Navigate } from "react-router-dom";
 
-const BASE_URL = "http://127.0.0.1:8000";
+const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 const C = {
   saffron:"#E8621A", saffronPale:"#FDF0E8", saffronDark:"#C04B2D",
   teal:"#0D6E6E", tealPale:"#E8F5F5", tealDark:"#094f4f",
