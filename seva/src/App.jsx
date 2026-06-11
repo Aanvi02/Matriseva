@@ -5,7 +5,7 @@ import DoctorDashboard  from "./pages/DoctorDashboard";
 import AdminDashboard   from "./pages/AdminDashboard";
 import PatientDashboard from "./pages/PatientDashboard";
 import PatientPortal    from "./pages/PatientPortal";
-import ASHAPortal       from "./pages/ASHAPortal";
+import ASHAPortal       from "./pages/Ashaportal";
 import PatientForm      from "./components/PatientForm";
 import Result           from "./pages/Result";
 
