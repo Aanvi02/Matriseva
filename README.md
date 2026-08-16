@@ -142,6 +142,6 @@ JWT_SECRET=
 
 <div align="center">
 
-Built by **[Aanvi Rohilla](https://github.com/Aanvi02)**
+(https://github.com/Aanvi02)**
 
 </div>
