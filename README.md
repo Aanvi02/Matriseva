@@ -45,12 +45,9 @@ JWT-based authentication with role-aware access control.
 **ASHA Worker — Patient Management**
 Track and register patients by risk level, view scores at a glance, and manage doctor assignments.
 
-![ASHA Portal](./screenshots/asha-portal.png)
 
 **Patient — Health Overview**
 Real-time AI risk assessment alongside vitals (blood pressure, hemoglobin, weight, blood sugar) and week-by-week pregnancy guidance.
-
-![Patient Dashboard](./screenshots/patient-dashboard.png)
 
 ---
 
