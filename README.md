@@ -11,8 +11,6 @@ Bridging the last-mile healthcare gap for expecting mothers through real-time ri
 
 </div>
 
----
-
 ## The Problem
 
 In rural India, maternal health monitoring is fragmented — ASHA workers track patient vitals on paper, doctors have limited visibility into at-risk pregnancies, and patients often lack access to timely guidance in their own language. High-risk pregnancies frequently go undetected until it's too late.
