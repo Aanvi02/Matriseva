@@ -2,7 +2,7 @@
 
 # 🌸 Matriseva
 
-**AI-Powered Maternal Healthcare Platform for Rural India**
+**AI-Powered Maternal Healthcare Platform**
 
 Bridging the last-mile healthcare gap for expecting mothers through real-time risk prediction, multilingual AI support, and coordinated care between ASHA workers, doctors, and patients.
 
