@@ -4,7 +4,7 @@
 
 **AI-Powered Maternal Healthcare Platform**
 
-Bridging the last-mile healthcare gap for expecting mothers through real-time risk prediction, multilingual AI support, and coordinated care between ASHA workers, doctors, and patients.
+Bridging the last-mile healthcare gap for expecting mothers through real time risk prediction, multilingual AI support, and coordinated care between ASHA workers, doctors, and patients.
 
 [![Live Demo](https://img.shields.io/badge/Live-Demo-B9A7FF?style=for-the-badge)](#)
 [![GitHub](https://img.shields.io/badge/View-Code-2d2b45?style=for-the-badge&logo=github)](#)
